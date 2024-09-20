@@ -16,18 +16,24 @@ pushd openssl-${OPENSSL_3_0_VERSION}
 # Otherwise it gets set to /tools/deps/ssl by default.
 case "${TARGET_TRIPLE}" in
     *apple*)
-        EXTRA_FLAGS="--openssldir=/private/etc/ssl"
+        OPENSSL_DIR=/private/etc/ssl
         ;;
     *)
-        EXTRA_FLAGS="--openssldir=/etc/ssl"
+        OPENSSL_DIR=/etc/ssl
         ;;
 esac
+EXTRA_FLAGS="--openssldir=${OPENSSL_DIR}"
+EXTRA_INSTALL_FLAGS=""
 
 # musl is missing support for various primitives.
 # TODO disable secure memory is a bit scary. We should look into a proper
 # workaround.
 if [ "${CC}" = "musl-clang" ]; then
     EXTRA_FLAGS="${EXTRA_FLAGS} no-async -DOPENSSL_NO_ASYNC -D__STDC_NO_ATOMICS__=1 no-engine -DOPENSSL_NO_SECURE_MEMORY"
+else
+    # fips.so linking fails with musl.
+    EXTRA_INSTALL_FLAGS="install_fips"
+    EXTRA_FLAGS="${EXTRA_FLAGS} enable-fips"
 fi
 
 # The -arch cflags confuse Configure. And OpenSSL adds them anyway.
@@ -47,4 +53,9 @@ EXTRA_FLAGS="${EXTRA_FLAGS} ${EXTRA_TARGET_CFLAGS}"
   ${EXTRA_FLAGS}
 
 make -j ${NUM_CPUS}
-make -j ${NUM_CPUS} install_sw install_ssldirs DESTDIR=${ROOT}/out
+make -j ${NUM_CPUS} install_sw install_ssldirs ${EXTRA_INSTALL_FLAGS} DESTDIR=${ROOT}/out
+
+if [ -f ${ROOT}/out${OPENSSL_DIR}/fipsmodule.cnf  ]; then
+    # install_fips does not use DESTDIR. we need to copy it so it gets added to the archive.
+    cp ${ROOT}/out${OPENSSL_DIR}/fipsmodule.cnf ${ROOT}/out/tools/deps/fipsmodule.cnf
+fi
