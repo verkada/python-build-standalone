@@ -16,12 +16,13 @@ pushd openssl-${OPENSSL_3_0_VERSION}
 # Otherwise it gets set to /tools/deps/ssl by default.
 case "${TARGET_TRIPLE}" in
     *apple*)
-        EXTRA_FLAGS="--openssldir=/private/etc/ssl"
+        OPENSSL_DIR=/private/etc/ssl
         ;;
     *)
-        EXTRA_FLAGS="--openssldir=/etc/ssl"
+        OPENSSL_DIR=/etc/ssl
         ;;
 esac
+EXTRA_FLAGS="--openssldir=$OPENSSL_DIR"
 
 # musl is missing support for various primitives.
 # TODO disable secure memory is a bit scary. We should look into a proper
@@ -44,7 +45,10 @@ EXTRA_FLAGS="${EXTRA_FLAGS} ${EXTRA_TARGET_CFLAGS}"
   no-legacy \
   no-shared \
   no-tests \
+  enable-fips \
   ${EXTRA_FLAGS}
 
 make -j ${NUM_CPUS}
-make -j ${NUM_CPUS} install_sw install_ssldirs DESTDIR=${ROOT}/out
+make -j ${NUM_CPUS} install_sw install_ssldirs install_fips DESTDIR=${ROOT}/out
+# install_fips does not use DESTDIR. we need to copy it so it gets added to the archive.
+cp ${ROOT}/out$OPENSSL_DIR/fipsmodule.cnf ${ROOT}/out/tools/deps/fipsmodule.cnf
