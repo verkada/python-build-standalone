@@ -2,7 +2,7 @@ name: MacOS Python build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 20240726-fips]
   pull_request:
   schedule:
     - cron: '13 11 * * *'
