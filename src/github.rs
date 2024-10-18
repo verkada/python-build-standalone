@@ -119,7 +119,6 @@ pub async fn command_fetch_release_distributions(args: &ArgMatches) -> Result<()
                 wf.path.as_str(),
                 ".github/workflows/apple.yml"
                     | ".github/workflows/linux.yml"
-                    | ".github/workflows/windows.yml"
             ) {
                 workflow_names.insert(wf.id, wf.name);
 
