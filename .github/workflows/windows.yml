@@ -2,7 +2,7 @@ name: Windows Python build
 
 on:
   push:
-    branches: [main, 20240726-fips]
+    branches: [main]
   pull_request:
   schedule:
     - cron: '13 11 * * *'
