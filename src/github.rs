@@ -119,7 +119,6 @@ pub async fn command_fetch_release_distributions(args: &ArgMatches) -> Result<()
                 wf.path.as_str(),
                 ".github/workflows/apple.yml"
                     | ".github/workflows/linux.yml"
-                    | ".github/workflows/windows.yml"
             ) {
                 workflow_names.insert(wf.id, wf.name);
 
@@ -159,7 +158,7 @@ pub async fn command_fetch_release_distributions(args: &ArgMatches) -> Result<()
                 })
                 .ok_or_else(|| {
                     anyhow!(
-                        "could not find workflow run for commit {commit} for workflow {workflow_name}",
+                        "could not find workflow run for commit {commit} for workflow XXXX {workflow_name}",
                     )
                 })?,
         );
