@@ -41,8 +41,8 @@ EXTRA_TARGET_CFLAGS=${EXTRA_TARGET_CFLAGS/\-arch arm64/}
 EXTRA_TARGET_CFLAGS=${EXTRA_TARGET_CFLAGS/\-arch x86_64/}
 
 # With -fvisibility=hidden, OSSL_provider_init symbol is not exported in fips module preventing it from loaded
-# OSSL_provider_init is supposed to be `extern` so it should not happen but I can't find a more targeted solution
-# at the moment.
+# OSSL_provider_init is supposed to be `extern`. I believe we could also patch OpenSSL to use
+# `extern  __attribute__((visibility("default")))` instead.
 EXTRA_TARGET_CFLAGS=${EXTRA_TARGET_CFLAGS//-fvisibility=hidden/}
 EXTRA_FLAGS="${EXTRA_FLAGS} ${EXTRA_TARGET_CFLAGS}"
 
