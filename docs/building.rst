@@ -7,7 +7,7 @@ Building
 Linux
 =====
 
-The host system must be 64-bit. A Python 3.5+ interpreter must be
+The host system must be 64-bit. A Python 3.9+ interpreter must be
 available. The execution environment must have access to a Docker
 daemon (all build operations are performed in Docker containers for
 isolation from the host system).
@@ -24,7 +24,7 @@ To build a Python distribution for Linux x64::
 
 You can also build another version of Python. e.g.::
 
-    $ ./build-linux.py --python cpython-3.8
+    $ ./build-linux.py --python cpython-3.13
 
 To build a Python distribution for Linux x64 using musl libc::
 
@@ -42,6 +42,7 @@ As are various other targets::
     $ ./build-linux.py --target mips-unknown-linux-gnu
     $ ./build-linux.py --target mipsel-unknown-linux-gnu
     $ ./build-linux.py --target ppc64le-unknown-linux-gnu
+    $ ./build-linux.py --target riscv64-unknown-linux-gnu
     $ ./build-linux.py --target s390x-unknown-linux-gnu
 
 macOS
@@ -75,20 +76,15 @@ The ``APPLE_SDK_PATH`` environment variable is recognized as the path
 to the Apple SDK to use. If not defined, the build will attempt to find
 an SDK by running ``xcrun --show-sdk-path``.
 
-``aarch64-apple-darwin`` builds require a macOS 11.0+ SDK and building
-Python 3.9+. It should be possible to build for ``aarch64-apple-darwin`` from
+``aarch64-apple-darwin`` builds require a macOS 11.0+ SDK.
+It should be possible to build for ``aarch64-apple-darwin`` from
 an Intel 10.15 machine (as long as the 11.0+ SDK is used).
-
-Python 3.8 may not build properly with a macOS 11.0+ SDK: try using the
-macOS 10.15 SDK instead.
 
 Windows
 =======
 
 Visual Studio 2017 (or later) is required. A compatible Windows SDK is required
 (10.0.17763.0 as per CPython 3.7.2).
-
-If building CPython 3.8+, there are the following additional requirements:
 
 * A ``git.exe`` on ``PATH`` (to clone ``libffi`` from source).
 * An installation of Cywgin with the ``autoconf``, ``automake``, ``libtool``,
@@ -102,45 +98,9 @@ It's also possible to build with optional PGO optimizations::
 
    $ py.exe build-windows.py --options pgo
 
-If building CPython 3.8+, you will need to specify the path to a
-``sh.exe`` installed from cygwin. e.g.
+You will need to specify the path to a ``sh.exe`` installed from cygwin. e.g.
 
-   $ py.exe build-windows.py --python cpython-3.8 --sh c:\cygwin\bin\sh.exe --options noopt
+   $ py.exe build-windows.py --python cpython-3.13 --sh c:\cygwin\bin\sh.exe --options noopt
 
 To build a 32-bit x86 binary, simply use an ``x86 Native Tools
 Command Prompt`` instead of ``x64``.
-
-Using sccache to Speed up Builds
-================================
-
-Builds can take a long time.
-
-python-build-standalone can automatically detect and use the
-`sccache <https://github.com/mozilla/sccache>`_ compiler cache to speed
-up subsequent builds on UNIX-like platforms. ``sccache`` can shave dozens
-of minutes from fresh builds, even on a 16 core CPU!
-
-If there is an executable ``sccache`` in the source directory, it will
-automatically be copied into the build environment and used. For non-container
-builds, an ``sccache`` executable is also searched for on ``PATH``.
-
-The ``~/.python-build-standalone-env`` file is read if it exists (the format is
-``key=value`` pairs) and variables are added to the build environment.
-
-In addition, environment variables ``AWS_ACCESS_KEY_ID``,
-``AWS_SECRET_ACCESS_KEY``, and any variable beginning with ``SCCACHE_`` are
-automatically added to the build environment.
-
-The environment variable support enables you to define remote build caches
-(such as S3 buckets) to provide a persistent, shared cache across builds and
-machines.
-
-Keep in mind that when performing builds in containers in Linux (the default
-behavior), the local filesystem is local to the container and does not survive
-the build of a single package. So sccache is practically meaningless unless
-configured to use an external store (such as S3).
-
-When using remote stores (such as S3), ``sccache`` can be constrained on
-network I/O. We recommend having at least a 100mbps network connection to
-a remote store and employing a network store with as little latency as possible
-for best results.

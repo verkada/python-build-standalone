@@ -8,14 +8,14 @@ Obtaining Distributions
 =======================
 
 Pre-built distributions are published as releases on GitHub at
-https://github.com/indygreg/python-build-standalone/releases.
+https://github.com/astral-sh/python-build-standalone/releases.
 Simply go to that page and find the latest release along with
 its release notes.
 
 Machines can find the latest release by querying the GitHub releases
 API. Alternatively, a JSON file publishing metadata about the latest
 release can be fetched from
-https://raw.githubusercontent.com/indygreg/python-build-standalone/latest-release/latest-release.json.
+https://raw.githubusercontent.com/astral-sh/python-build-standalone/latest-release/latest-release.json.
 The JSON format is simple and hopefully self-descriptive.
 
 Published distributions vary by their:
@@ -48,6 +48,8 @@ familiar with LLVM target triples, here is an overview:
    Python and extensions. These builds behave like the official Python
    for Windows distributions.
 
+   These builds are now published without the `-shared` suffix.
+
 ``*-windows-msvc-static``
    These builds of Python are statically linked.
 
@@ -56,6 +58,8 @@ familiar with LLVM target triples, here is an overview:
    have confidence they work for your use case.
 
    See :ref:`quirk_windows_static_distributions` for more.
+
+   These builds are no longer published.
 
 ``x86_64-unknown-linux-gnu``
    Linux 64-bit Intel/AMD CPUs linking against GNU libc.
@@ -245,8 +249,7 @@ Windows
 Windows distributions model the requirements of the official Python
 distributions:
 
-* Windows 7 or Windows Server 2012 or newer on Python 3.8.
-* Windows 8 or Windows Server 2012 or newer on Python 3.9+.
+* Windows 8 or Windows Server 2012 or newer
 
 Windows binaries have a dependency on the Microsoft Visual C++ Redistributable,
 likely from MSVC 2015 (``vcruntime140.dll``). This dependency is not

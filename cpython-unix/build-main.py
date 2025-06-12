@@ -7,13 +7,15 @@ import argparse
 import multiprocessing
 import os
 import pathlib
-import platform
 import subprocess
 import sys
 
+from pythonbuild.cpython import meets_python_minimum_version
 from pythonbuild.downloads import DOWNLOADS
 from pythonbuild.utils import (
     compress_python_archive,
+    current_host_platform,
+    default_target_triple,
     get_target_settings,
     release_tag_from_git,
     supported_targets,
@@ -27,48 +29,38 @@ TARGETS_CONFIG = SUPPORT / "targets.yml"
 
 
 def main():
-    if sys.platform == "linux":
-        host_platform = "linux64"
-        default_target_triple = "x86_64-unknown-linux-gnu"
-    elif sys.platform == "darwin":
-        host_platform = "macos"
-        machine = platform.machine()
+    host_platform = current_host_platform()
 
-        if machine == "arm64":
-            default_target_triple = "aarch64-apple-darwin"
-        elif machine == "x86_64":
-            default_target_triple = "x86_64-apple-darwin"
-        else:
-            raise Exception("unhandled macOS machine value: %s" % machine)
-    else:
-        print("Unsupported build platform: %s" % sys.platform)
-        return 1
-
+    # Note these arguments must be synced with `build.py`
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--target-triple",
-        default=default_target_triple,
+        default=default_target_triple(),
         choices=supported_targets(TARGETS_CONFIG),
         help="Target host triple to build for",
     )
 
-    optimizations = {"debug", "noopt", "pgo", "lto", "pgo+lto"}
+    # Construct possible options, we use a set here for canonical ordering
+    options = set()
+    options.update({"debug", "noopt", "pgo", "lto", "pgo+lto"})
+    options.update({f"freethreaded+{option}" for option in options})
+    options.update({f"{option}+static" for option in options})
     parser.add_argument(
         "--options",
-        choices=optimizations.union({f"freethreaded+{o}" for o in optimizations}),
+        choices=options,
         default="noopt",
         help="Build options to apply when compiling Python",
     )
     parser.add_argument(
         "--python",
         choices={
-            "cpython-3.8",
             "cpython-3.9",
             "cpython-3.10",
             "cpython-3.11",
             "cpython-3.12",
             "cpython-3.13",
+            "cpython-3.14",
         },
         default="cpython-3.11",
         help="Python distribution to build",
@@ -102,9 +94,11 @@ def main():
             "toolchain",
             "toolchain-image-build",
             "toolchain-image-build.cross",
+            "toolchain-image-build.cross-riscv64",
             "toolchain-image-gcc",
             "toolchain-image-xcb",
             "toolchain-image-xcb.cross",
+            "toolchain-image-xcb.cross-riscv64",
         },
         default="default",
         help="The make target to evaluate",
@@ -157,7 +151,7 @@ def main():
             return 1
         cpython_version = env["PYBUILD_PYTHON_VERSION"]
 
-    env["PYBUILD_PYTHON_MAJOR_VERSION"] = ".".join(cpython_version.split(".")[0:2])
+    python_majmin = ".".join(cpython_version.split(".")[0:2])
 
     if "PYBUILD_RELEASE_TAG" in os.environ:
         release_tag = os.environ["PYBUILD_RELEASE_TAG"]
@@ -165,12 +159,12 @@ def main():
         release_tag = release_tag_from_git()
 
     # Guard against accidental misuse of the free-threaded flag with older versions
-    if "freethreaded" in args.options and env["PYBUILD_PYTHON_MAJOR_VERSION"] not in (
-        "3.13"
+    if "freethreaded" in args.options and not meets_python_minimum_version(
+        python_majmin, "3.13"
     ):
         print(
             "Invalid build option: 'freethreaded' is only compatible with CPython 3.13+ (got %s)"
-            % env["PYBUILD_PYTHON_MAJOR_VERSION"]
+            % cpython_version
         )
         return 1
 

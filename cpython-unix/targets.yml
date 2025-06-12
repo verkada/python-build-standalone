@@ -25,6 +25,10 @@
 # target_cc
 #    Path to C compiler to use for building binaries targeting the
 #    target architecture.
+
+# target_cxx
+#    Path to C++ compiler to use for building binaries targeting the
+#    target architecture.
 #
 # target_cflags
 #    List of extra compiler flags to use when building for the target.
@@ -57,18 +61,20 @@
 # 11.0+.
 aarch64-apple-darwin:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   apple_sdk_platform: macosx
   target_cflags:
     - '-arch'
@@ -106,7 +112,8 @@ aarch64-apple-darwin:
 
 aarch64-apple-ios:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -114,6 +121,7 @@ aarch64-apple-ios:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'arm64'
@@ -147,18 +155,19 @@ aarch64-apple-ios:
 
 aarch64-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/aarch64-linux-gnu-gcc
+  target_cxx: /usr/bin/aarch64-linux-gnu-g++
   needs:
     - autoconf
     - bdb
@@ -187,7 +196,8 @@ aarch64-unknown-linux-gnu:
 
 arm64-apple-tvos:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -195,6 +205,7 @@ arm64-apple-tvos:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'arm64'
@@ -227,17 +238,19 @@ arm64-apple-tvos:
 
 armv7-unknown-linux-gnueabi:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/arm-linux-gnueabi-gcc
+  target_cxx: /usr/bin/arm-linux-gnueabi-g++
   needs:
     - autoconf
     - bdb
@@ -266,17 +279,19 @@ armv7-unknown-linux-gnueabi:
 
 armv7-unknown-linux-gnueabihf:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/arm-linux-gnueabihf-gcc
+  target_cxx: /usr/bin/arm-linux-gnueabihf-g++
   needs:
     - autoconf
     - bdb
@@ -303,64 +318,21 @@ armv7-unknown-linux-gnueabihf:
     - zlib
   openssl_target: linux-armv4
 
-i686-unknown-linux-gnu:
-  host_platforms:
-    - linux64
-  pythons_supported:
-    - '3.8'
-    - '3.9'
-    - '3.10'
-    - '3.11'
-    - '3.12'
-    - '3.13'
-  needs_toolchain: true
-  host_cc: clang
-  host_cxx: clang++
-  target_cc: clang
-  target_cflags:
-    - '-m32'
-    - '-fvisibility=hidden'
-  target_ldflags:
-    - '-m32'
-  needs:
-    - autoconf
-    - bdb
-    - binutils
-    - bzip2
-    - expat
-    - libedit
-    - libffi
-    - libX11
-    - libXau
-    - libxcb
-    - m4
-    - mpdecimal
-    - ncurses
-    - openssl-3.0
-    - patchelf
-    - sqlite
-    - tcl
-    - tk
-    - tix
-    - uuid
-    - xorgproto
-    - xz
-    - zlib
-  openssl_target: linux-x86-clang
-
 mips-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/mips-linux-gnu-gcc
+  target_cxx: /usr/bin/mips-linux-gnu-g++
   needs:
     - autoconf
     - bdb
@@ -389,17 +361,19 @@ mips-unknown-linux-gnu:
 
 mipsel-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/mipsel-linux-gnu-gcc
+  target_cxx: /usr/bin/mipsel-linux-gnu-g++
   needs:
     - autoconf
     - bdb
@@ -428,17 +402,19 @@ mipsel-unknown-linux-gnu:
 
 ppc64le-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/powerpc64le-linux-gnu-gcc
+  target_cxx: /usr/bin/powerpc64le-linux-gnu-g++
   needs:
     - autoconf
     - bdb
@@ -465,19 +441,62 @@ ppc64le-unknown-linux-gnu:
     - zlib
   openssl_target: linux-ppc64le
 
-s390x-unknown-linux-gnu:
+riscv64-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
+  docker_image_suffix: .cross-riscv64
+  host_cc: /usr/bin/x86_64-linux-gnu-gcc
+  host_cxx: /usr/bin/x86_64-linux-gnu-g++
+  target_cc: /usr/bin/riscv64-linux-gnu-gcc
+  target_cxx: /usr/bin/riscv64-linux-gnu-g++
+  needs:
+    - autoconf
+    - bdb
+    - binutils
+    - bzip2
+    - expat
+    - libedit
+    - libffi
+    - libX11
+    - libXau
+    - libxcb
+    - m4
+    - mpdecimal
+    - ncurses
+    - openssl-3.0
+    - patchelf
+    - sqlite
+    - tcl
+    - tk
+    - tix
+    - uuid
+    - xorgproto
+    - xz
+    - zlib
+  openssl_target: linux64-riscv64
+
+s390x-unknown-linux-gnu:
+  host_platforms:
+    - linux_x86_64
+  pythons_supported:
+    - '3.9'
+    - '3.10'
+    - '3.11'
+    - '3.12'
+    - '3.13'
+    - '3.14'
   docker_image_suffix: .cross
   host_cc: /usr/bin/x86_64-linux-gnu-gcc
   host_cxx: /usr/bin/x86_64-linux-gnu-g++
   target_cc: /usr/bin/s390x-linux-gnu-gcc
+  target_cxx: /usr/bin/s390x-linux-gnu-g++
   needs:
     - autoconf
     - bdb
@@ -506,7 +525,8 @@ s390x-unknown-linux-gnu:
 
 thumb7k-apple-watchos:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -514,6 +534,7 @@ thumb7k-apple-watchos:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'armv7k'
@@ -546,27 +567,29 @@ thumb7k-apple-watchos:
 
 # Intel macOS.
 #
-# We target compatibility with macOS 10.9+ for compatibility with older Apple
+# We target compatibility with macOS 10.15+ for compatibility with older Apple
 # machines.
 x86_64-apple-darwin:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   apple_sdk_platform: macosx
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'x86_64'
-    - '-mmacosx-version-min=10.9'
+    - '-mmacosx-version-min=10.15'
     # Suppress extremely verbose warnings we see with LLVM 10.
     - '-Wno-nullability-completeness'
     - '-Wno-expansion-to-defined'
@@ -581,7 +604,7 @@ x86_64-apple-darwin:
   target_ldflags:
     - '-arch'
     - 'x86_64'
-    - '-mmacosx-version-min=10.9'
+    - '-mmacosx-version-min=10.15'
   needs:
     - autoconf
     - bzip2
@@ -599,7 +622,8 @@ x86_64-apple-darwin:
 
 x86_64-apple-ios:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -607,6 +631,7 @@ x86_64-apple-ios:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'x86_64'
@@ -640,7 +665,8 @@ x86_64-apple-ios:
 
 x86_64-apple-tvos:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -648,6 +674,7 @@ x86_64-apple-tvos:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'x86_64'
@@ -680,7 +707,8 @@ x86_64-apple-tvos:
 
 x86_64-apple-watchos:
   host_platforms:
-    - macos
+    - macos_arm64
+    - macos_x86_64
   pythons_supported:
     - '3.9'
   needs_toolchain: true
@@ -688,6 +716,7 @@ x86_64-apple-watchos:
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-arch'
     - 'x86_64'
@@ -720,18 +749,19 @@ x86_64-apple-watchos:
 
 x86_64-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-fvisibility=hidden'
     # Needed to prevent BOLT from crashing.
@@ -765,18 +795,19 @@ x86_64-unknown-linux-gnu:
 
 x86_64_v2-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-march=x86-64-v2'
     - '-fvisibility=hidden'
@@ -811,18 +842,19 @@ x86_64_v2-unknown-linux-gnu:
 
 x86_64_v3-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-march=x86-64-v3'
     - '-fvisibility=hidden'
@@ -857,18 +889,19 @@ x86_64_v3-unknown-linux-gnu:
 
 x86_64_v4-unknown-linux-gnu:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: clang
+  target_cxx: clang++
   target_cflags:
     - '-march=x86-64-v4'
     - '-fvisibility=hidden'
@@ -903,18 +936,19 @@ x86_64_v4-unknown-linux-gnu:
 
 x86_64-unknown-linux-musl:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: musl-clang
+  target_cxx: clang++  # TODO: Explore a musl-clang++ shim?
   target_cflags:
     - '-fvisibility=hidden'
   needs:
@@ -946,18 +980,19 @@ x86_64-unknown-linux-musl:
 
 x86_64_v2-unknown-linux-musl:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: musl-clang
+  target_cxx: clang++  # TODO: Explore a musl-clang++ shim?
   target_cflags:
     - '-march=x86-64-v2'
     - '-fvisibility=hidden'
@@ -990,18 +1025,19 @@ x86_64_v2-unknown-linux-musl:
 
 x86_64_v3-unknown-linux-musl:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: musl-clang
+  target_cxx: clang++  # TODO: Explore a musl-clang++ shim?
   target_cflags:
     - '-march=x86-64-v3'
     - '-fvisibility=hidden'
@@ -1034,18 +1070,19 @@ x86_64_v3-unknown-linux-musl:
 
 x86_64_v4-unknown-linux-musl:
   host_platforms:
-    - linux64
+    - linux_x86_64
   pythons_supported:
-    - '3.8'
     - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
   needs_toolchain: true
   host_cc: clang
   host_cxx: clang++
   target_cc: musl-clang
+  target_cxx: clang++  # TODO: Explore a musl-clang++ shim?
   target_cflags:
     - '-march=x86-64-v4'
     - '-fvisibility=hidden'

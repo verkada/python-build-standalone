@@ -51,8 +51,8 @@ release-set-latest-release tag:
   {
     "version": 1,
     "tag": "{{tag}}",
-    "release_url": "https://github.com/indygreg/python-build-standalone/releases/tag/{{tag}}",
-    "asset_url_prefix": "https://github.com/indygreg/python-build-standalone/releases/download/{{tag}}"
+    "release_url": "https://github.com/astral-sh/python-build-standalone/releases/tag/{{tag}}",
+    "asset_url_prefix": "https://github.com/astral-sh/python-build-standalone/releases/download/{{tag}}"
   }
   EOF
 
@@ -66,6 +66,28 @@ release-set-latest-release tag:
   else
     echo "No changes to commit."
   fi
+
+# Create a GitHub release object, or reuse an existing prerelease.
+release-create tag:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  prerelease_exists=$(gh release view {{tag}} --json isPrerelease -t '{{{{.isPrerelease}}' 2>&1 || true)
+  case "$prerelease_exists" in
+    true)
+      echo "note: updating existing prerelease {{tag}}"
+      ;;
+    false)
+      echo "error: release {{tag}} already exists"
+      exit 1
+      ;;
+    "release not found")
+      gh release create {{tag}} --prerelease --notes TBD --verify-tag
+      ;;
+    *)
+      echo "error: unexpected gh cli output: $prerelease_exists"
+      exit 1
+      ;;
+  esac
 
 # Perform the release job. Assumes that the GitHub Release has been created.
 release-run token commit tag:

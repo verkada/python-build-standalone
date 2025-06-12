@@ -16,6 +16,19 @@ EXTENSION_MODULE_SCHEMA = {
     "properties": {
         "build-mode": {"type": "string"},
         "config-c-only": {"type": "boolean"},
+        "config-c-only-conditional": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "config-c-only": {"type": "boolean"},
+                    "minimum-python-version": {"type": "string"},
+                    "maximum-python-version": {"type": "string"},
+                },
+                "additionalProperties": False,
+                "required": ["config-c-only"],
+            },
+        },
         "defines": {"type": "array", "items": {"type": "string"}},
         "defines-conditional": {
             "type": "array",
@@ -227,6 +240,7 @@ def derive_setup_local(
     cpython_source_archive,
     python_version,
     target_triple,
+    build_options,
     extension_modules,
 ):
     """Derive the content of the Modules/Setup.local file."""
@@ -284,6 +298,18 @@ def derive_setup_local(
 
         if info.get("config-c-only"):
             config_c_only_wanted.add(name)
+
+        for entry in info.get("config-c-only-conditional", []):
+            python_min_match_setup = meets_python_minimum_version(
+                python_version, entry.get("minimum-python-version", "1.0")
+            )
+            python_max_match_setup = meets_python_maximum_version(
+                python_version, entry.get("maximum-python-version", "100.0")
+            )
+            if entry.get("config-c-only", False) and (
+                python_min_match_setup and python_max_match_setup
+            ):
+                config_c_only_wanted.add(name)
 
     # Parse more files in the distribution for their metadata.
 
@@ -466,12 +492,11 @@ def derive_setup_local(
             enabled_extensions[name]["setup_line"] = name.encode("ascii")
             continue
 
-        # musl is static only. Ignore build-mode override.
-        if "musl" in target_triple:
-            section = "static"
-        else:
-            section = info.get("build-mode", "static")
-
+        # Force static linking if we're doing a fully static build, otherwise,
+        # respect the `build-mode` falling back to `static` if not defined.
+        section = (
+            "static" if "static" in build_options else info.get("build-mode", "static")
+        )
         enabled_extensions[name]["build-mode"] = section
 
         # Presumably this means the extension comes from the distribution's
@@ -511,7 +536,10 @@ def derive_setup_local(
             )
 
             if target_match and (python_min_match and python_max_match):
-                line += f" {entry['source']}"
+                if source := entry.get("source"):
+                    line += f" {source}"
+                for source in entry.get("sources", []):
+                    line += f" {source}"
 
         for define in info.get("defines", []):
             line += f" -D{define}"
@@ -549,7 +577,11 @@ def derive_setup_local(
             )
 
             if target_match and (python_min_match and python_max_match):
-                line += f" -I{entry['path']}"
+                # TODO: Change to `include` and drop support for `path`
+                if include := entry.get("path"):
+                    line += f" -I{include}"
+                for include in entry.get("includes", []):
+                    line += f" -I{include}"
 
         for path in info.get("includes-deps", []):
             # Includes are added to global search path.
@@ -562,7 +594,19 @@ def derive_setup_local(
             line += " %s" % link_for_target(lib, target_triple)
 
         for entry in info.get("links-conditional", []):
-            if any(re.match(p, target_triple) for p in entry["targets"]):
+            if targets := entry.get("targets", []):
+                target_match = any(re.match(p, target_triple) for p in targets)
+            else:
+                target_match = True
+
+            python_min_match = meets_python_minimum_version(
+                python_version, entry.get("minimum-python-version", "1.0")
+            )
+            python_max_match = meets_python_maximum_version(
+                python_version, entry.get("maximum-python-version", "100.0")
+            )
+
+            if target_match and (python_min_match and python_max_match):
                 line += " %s" % link_for_target(entry["name"], target_triple)
 
         if "-apple-" in target_triple:

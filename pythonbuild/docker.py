@@ -48,6 +48,9 @@ def ensure_docker_image(client, fh, image_path=None):
         if "aux" in s and "ID" in s["aux"]:
             image = s["aux"]["ID"]
 
+        if "error" in s:
+            log(s["error"])
+
     if not image:
         raise Exception("unable to determine built Docker image")
 
@@ -155,9 +158,10 @@ def container_get_archive(container, path):
 
     new_data = io.BytesIO()
 
-    with tarfile.open(fileobj=old_data) as itf, tarfile.open(
-        fileobj=new_data, mode="w"
-    ) as otf:
+    with (
+        tarfile.open(fileobj=old_data) as itf,
+        tarfile.open(fileobj=new_data, mode="w") as otf,
+    ):
         for member in sorted(itf.getmembers(), key=operator.attrgetter("name")):
             file_data = itf.extractfile(member) if not member.linkname else None
             member.mtime = DEFAULT_MTIME

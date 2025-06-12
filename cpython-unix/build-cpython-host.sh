@@ -22,7 +22,7 @@ export trailer_m4=${TOOLS_PATH}/host/share/autoconf/autoconf/trailer.m4
 
 # The share/autoconf/autom4te.cfg file also hard-codes some paths. Rewrite
 # those to the real tools path.
-if [ "${PYBUILD_PLATFORM}" = "macos" ]; then
+if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
   sed_args="-i '' -e"
 else
   sed_args="-i"
@@ -40,10 +40,8 @@ pushd "Python-${PYTHON_VERSION}"
 if [ "${CC}" = "clang" ]; then
   if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]; then
     patch -p1 -i ${ROOT}/patch-disable-multiarch-13.patch
-  elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_9}" ]; then
-    patch -p1 -i ${ROOT}/patch-disable-multiarch.patch
   else
-    patch -p1 -i ${ROOT}/patch-disable-multiarch-legacy.patch
+    patch -p1 -i ${ROOT}/patch-disable-multiarch.patch
   fi
 elif [ "${CC}" = "musl-clang" ]; then
   # Similarly, this is a problem for musl Clang on Python 3.13+

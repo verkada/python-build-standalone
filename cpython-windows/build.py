@@ -72,6 +72,10 @@ CONVERT_TO_BUILTIN_EXTENSIONS = {
     },
     "_overlapped": {},
     "_multiprocessing": {},
+    "_remote_debugging": {
+        # Added in 3.14
+        "ignore_missing": True
+    },
     "_socket": {},
     "_sqlite3": {"shared_depends": ["sqlite3"]},
     # See the one-off calls to copy_link_to_lib() and elsewhere to hack up
@@ -90,6 +94,10 @@ CONVERT_TO_BUILTIN_EXTENSIONS = {
         "ignore_missing": True,
     },
     "_zoneinfo": {"ignore_missing": True},
+    "_zstd": {
+        # Added in 3.14
+        "ignore_missing": True
+    },
     "pyexpat": {},
     "select": {},
     "unicodedata": {},
@@ -114,9 +122,10 @@ EXTENSION_TO_LIBRARY_DOWNLOADS_ENTRY = {
     "_lzma": ["xz"],
     "_sqlite3": ["sqlite"],
     "_ssl": ["openssl"],
-    "_tkinter": ["tcl", "tk", "tix"],
+    "_tkinter": ["tcl-8612", "tk-8612", "tix"],
     "_uuid": ["uuid"],
     "zlib": ["zlib"],
+    "_zstd": ["zstd"],
 }
 
 
@@ -240,6 +249,7 @@ def find_vs_path(path, msvc_version):
     p = subprocess.check_output(
         [
             str(vswhere),
+            "-utf8",
             # Visual Studio 2019.
             "-version",
             version,
@@ -250,7 +260,6 @@ def find_vs_path(path, msvc_version):
         ]
     )
 
-    # Strictly speaking the output may not be UTF-8.
     p = pathlib.Path(p.strip().decode("utf-8"))
 
     p = p / path
@@ -345,6 +354,8 @@ def hack_props(
     td: pathlib.Path,
     pcbuild_path: pathlib.Path,
     arch: str,
+    python_version: str,
+    zlib_entry: str,
 ):
     # TODO can we pass props into msbuild.exe?
 
@@ -354,16 +365,24 @@ def hack_props(
     bzip2_version = DOWNLOADS["bzip2"]["version"]
     sqlite_version = DOWNLOADS["sqlite"]["version"]
     xz_version = DOWNLOADS["xz"]["version"]
-    zlib_version = DOWNLOADS["zlib"]["version"]
-    tcltk_commit = DOWNLOADS["tk-windows-bin"]["git_commit"]
+    zlib_version = DOWNLOADS[zlib_entry]["version"]
+    zstd_version = DOWNLOADS["zstd"]["version"]
+
     mpdecimal_version = DOWNLOADS["mpdecimal"]["version"]
+
+    if meets_python_minimum_version(python_version, "3.14"):
+        tcltk_commit = DOWNLOADS["tk-windows-bin"]["git_commit"]
+    else:
+        tcltk_commit = DOWNLOADS["tk-windows-bin-8612"]["git_commit"]
 
     sqlite_path = td / ("sqlite-autoconf-%s" % sqlite_version)
     bzip2_path = td / ("bzip2-%s" % bzip2_version)
     libffi_path = td / "libffi"
     tcltk_path = td / ("cpython-bin-deps-%s" % tcltk_commit)
     xz_path = td / ("xz-%s" % xz_version)
-    zlib_path = td / ("zlib-%s" % zlib_version)
+    zlib_prefix = "cpython-source-deps-" if zlib_entry == "zlib-ng" else ""
+    zlib_path = td / ("%s%s-%s" % (zlib_prefix, zlib_entry, zlib_version))
+    zstd_path = td / ("cpython-source-deps-zstd-%s" % zstd_version)
     mpdecimal_path = td / ("mpdecimal-%s" % mpdecimal_version)
 
     openssl_root = td / "openssl" / arch
@@ -403,6 +422,13 @@ def hack_props(
 
             elif b"<zlibDir" in line:
                 line = b"<zlibDir>%s\\</zlibDir>" % zlib_path
+
+            # On 3.14+, it's zlib-ng and the name changed
+            elif b"<zlibNgDir" in line:
+                line = b"<zlibNgDir>%s\\</zlibNgDir>" % zlib_path
+
+            elif b"<zstdDir" in line:
+                line = b"<zstdDir>%s\\</zstdDir>" % zstd_path
 
             elif b"<mpdecimalDir" in line:
                 line = b"<mpdecimalDir>%s\\</mpdecimalDir>" % mpdecimal_path
@@ -478,6 +504,7 @@ def hack_project_files(
     cpython_source_path: pathlib.Path,
     build_directory: str,
     python_version: str,
+    zlib_entry: str,
 ):
     """Hacks Visual Studio project files to work with our build."""
 
@@ -487,6 +514,8 @@ def hack_project_files(
         td,
         pcbuild_path,
         build_directory,
+        python_version,
+        zlib_entry,
     )
 
     # Our SQLite directory is named weirdly. This throws off version detection
@@ -557,18 +586,26 @@ def hack_project_files(
     except NoSearchStringError:
         pass
 
-    # Our custom OpenSSL build has applink.c in a different location
-    # from the binary OpenSSL distribution. Update it.
-    ssl_proj = pcbuild_path / "_ssl.vcxproj"
-    static_replace_in_file(
-        ssl_proj,
-        rb'<ClCompile Include="$(opensslIncludeDir)\applink.c">',
-        rb'<ClCompile Include="$(opensslIncludeDir)\openssl\applink.c">',
-    )
+    # Our custom OpenSSL build has applink.c in a different location from the
+    # binary OpenSSL distribution. This is no longer relevant for 3.12+ per
+    # https://github.com/python/cpython/pull/131839, so we allow it to fail.swe
+    try:
+        ssl_proj = pcbuild_path / "_ssl.vcxproj"
+        static_replace_in_file(
+            ssl_proj,
+            rb'<ClCompile Include="$(opensslIncludeDir)\applink.c">',
+            rb'<ClCompile Include="$(opensslIncludeDir)\openssl\applink.c">',
+        )
+    except NoSearchStringError:
+        pass
 
-    # We're still on the pre-built tk-windows-bin 8.6.12 which doesn't have a
-    # standalone zlib DLL. So remove references to it from 3.12+.
-    if meets_python_minimum_version(python_version, "3.12"):
+    # Python 3.12+ uses the the pre-built tk-windows-bin 8.6.12 which doesn't
+    # have a standalone zlib DLL, so we remove references to it. For Python
+    # 3.14+, we're using tk-windows-bin 8.6.14 which includes a prebuilt zlib
+    # DLL, so we skip this patch there.
+    if meets_python_minimum_version(
+        python_version, "3.12"
+    ) and meets_python_maximum_version(python_version, "3.13"):
         static_replace_in_file(
             pcbuild_path / "_tkinter.vcxproj",
             rb'<_TclTkDLL Include="$(tcltkdir)\bin\$(tclZlibDllName)" />',
@@ -614,230 +651,6 @@ def hack_project_files(
         pass
 
 
-PYPORT_EXPORT_SEARCH_39 = b"""
-#if defined(__CYGWIN__)
-#       define HAVE_DECLSPEC_DLL
-#endif
-
-#include "exports.h"
-
-/* only get special linkage if built as shared or platform is Cygwin */
-#if defined(Py_ENABLE_SHARED) || defined(__CYGWIN__)
-#       if defined(HAVE_DECLSPEC_DLL)
-#               if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
-#                       define PyAPI_FUNC(RTYPE) Py_EXPORTED_SYMBOL RTYPE
-#                       define PyAPI_DATA(RTYPE) extern Py_EXPORTED_SYMBOL RTYPE
-        /* module init functions inside the core need no external linkage */
-        /* except for Cygwin to handle embedding */
-#                       if defined(__CYGWIN__)
-#                               define PyMODINIT_FUNC Py_EXPORTED_SYMBOL PyObject*
-#                       else /* __CYGWIN__ */
-#                               define PyMODINIT_FUNC PyObject*
-#                       endif /* __CYGWIN__ */
-#               else /* Py_BUILD_CORE */
-        /* Building an extension module, or an embedded situation */
-        /* public Python functions and data are imported */
-        /* Under Cygwin, auto-import functions to prevent compilation */
-        /* failures similar to those described at the bottom of 4.1: */
-        /* http://docs.python.org/extending/windows.html#a-cookbook-approach */
-#                       if !defined(__CYGWIN__)
-#                               define PyAPI_FUNC(RTYPE) Py_IMPORTED_SYMBOL RTYPE
-#                       endif /* !__CYGWIN__ */
-#                       define PyAPI_DATA(RTYPE) extern Py_IMPORTED_SYMBOL RTYPE
-        /* module init functions outside the core must be exported */
-#                       if defined(__cplusplus)
-#                               define PyMODINIT_FUNC extern "C" Py_EXPORTED_SYMBOL PyObject*
-#                       else /* __cplusplus */
-#                               define PyMODINIT_FUNC Py_EXPORTED_SYMBOL PyObject*
-#                       endif /* __cplusplus */
-#               endif /* Py_BUILD_CORE */
-#       endif /* HAVE_DECLSPEC_DLL */
-#endif /* Py_ENABLE_SHARED */
-
-/* If no external linkage macros defined by now, create defaults */
-#ifndef PyAPI_FUNC
-#       define PyAPI_FUNC(RTYPE) Py_EXPORTED_SYMBOL RTYPE
-#endif
-#ifndef PyAPI_DATA
-#       define PyAPI_DATA(RTYPE) extern Py_EXPORTED_SYMBOL RTYPE
-#endif
-#ifndef PyMODINIT_FUNC
-#       if defined(__cplusplus)
-#               define PyMODINIT_FUNC extern "C" Py_EXPORTED_SYMBOL PyObject*
-#       else /* __cplusplus */
-#               define PyMODINIT_FUNC Py_EXPORTED_SYMBOL PyObject*
-#       endif /* __cplusplus */
-#endif
-"""
-
-PYPORT_EXPORT_SEARCH_38 = b"""
-#if defined(__CYGWIN__)
-#       define HAVE_DECLSPEC_DLL
-#endif
-
-/* only get special linkage if built as shared or platform is Cygwin */
-#if defined(Py_ENABLE_SHARED) || defined(__CYGWIN__)
-#       if defined(HAVE_DECLSPEC_DLL)
-#               if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
-#                       define PyAPI_FUNC(RTYPE) __declspec(dllexport) RTYPE
-#                       define PyAPI_DATA(RTYPE) extern __declspec(dllexport) RTYPE
-        /* module init functions inside the core need no external linkage */
-        /* except for Cygwin to handle embedding */
-#                       if defined(__CYGWIN__)
-#                               define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-#                       else /* __CYGWIN__ */
-#                               define PyMODINIT_FUNC PyObject*
-#                       endif /* __CYGWIN__ */
-#               else /* Py_BUILD_CORE */
-        /* Building an extension module, or an embedded situation */
-        /* public Python functions and data are imported */
-        /* Under Cygwin, auto-import functions to prevent compilation */
-        /* failures similar to those described at the bottom of 4.1: */
-        /* http://docs.python.org/extending/windows.html#a-cookbook-approach */
-#                       if !defined(__CYGWIN__)
-#                               define PyAPI_FUNC(RTYPE) __declspec(dllimport) RTYPE
-#                       endif /* !__CYGWIN__ */
-#                       define PyAPI_DATA(RTYPE) extern __declspec(dllimport) RTYPE
-        /* module init functions outside the core must be exported */
-#                       if defined(__cplusplus)
-#                               define PyMODINIT_FUNC extern "C" __declspec(dllexport) PyObject*
-#                       else /* __cplusplus */
-#                               define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-#                       endif /* __cplusplus */
-#               endif /* Py_BUILD_CORE */
-#       endif /* HAVE_DECLSPEC_DLL */
-#endif /* Py_ENABLE_SHARED */
-
-/* If no external linkage macros defined by now, create defaults */
-#ifndef PyAPI_FUNC
-#       define PyAPI_FUNC(RTYPE) RTYPE
-#endif
-#ifndef PyAPI_DATA
-#       define PyAPI_DATA(RTYPE) extern RTYPE
-#endif
-#ifndef PyMODINIT_FUNC
-#       if defined(__cplusplus)
-#               define PyMODINIT_FUNC extern "C" PyObject*
-#       else /* __cplusplus */
-#               define PyMODINIT_FUNC PyObject*
-#       endif /* __cplusplus */
-#endif
-"""
-
-PYPORT_EXPORT_SEARCH_37 = b"""
-#if defined(__CYGWIN__)
-#       define HAVE_DECLSPEC_DLL
-#endif
-
-/* only get special linkage if built as shared or platform is Cygwin */
-#if defined(Py_ENABLE_SHARED) || defined(__CYGWIN__)
-#       if defined(HAVE_DECLSPEC_DLL)
-#               if defined(Py_BUILD_CORE) || defined(Py_BUILD_CORE_BUILTIN)
-#                       define PyAPI_FUNC(RTYPE) __declspec(dllexport) RTYPE
-#                       define PyAPI_DATA(RTYPE) extern __declspec(dllexport) RTYPE
-        /* module init functions inside the core need no external linkage */
-        /* except for Cygwin to handle embedding */
-#                       if defined(__CYGWIN__)
-#                               define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-#                       else /* __CYGWIN__ */
-#                               define PyMODINIT_FUNC PyObject*
-#                       endif /* __CYGWIN__ */
-#               else /* Py_BUILD_CORE */
-        /* Building an extension module, or an embedded situation */
-        /* public Python functions and data are imported */
-        /* Under Cygwin, auto-import functions to prevent compilation */
-        /* failures similar to those described at the bottom of 4.1: */
-        /* http://docs.python.org/extending/windows.html#a-cookbook-approach */
-#                       if !defined(__CYGWIN__)
-#                               define PyAPI_FUNC(RTYPE) __declspec(dllimport) RTYPE
-#                       endif /* !__CYGWIN__ */
-#                       define PyAPI_DATA(RTYPE) extern __declspec(dllimport) RTYPE
-        /* module init functions outside the core must be exported */
-#                       if defined(__cplusplus)
-#                               define PyMODINIT_FUNC extern "C" __declspec(dllexport) PyObject*
-#                       else /* __cplusplus */
-#                               define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-#                       endif /* __cplusplus */
-#               endif /* Py_BUILD_CORE */
-#       endif /* HAVE_DECLSPEC_DLL */
-#endif /* Py_ENABLE_SHARED */
-
-/* If no external linkage macros defined by now, create defaults */
-#ifndef PyAPI_FUNC
-#       define PyAPI_FUNC(RTYPE) RTYPE
-#endif
-#ifndef PyAPI_DATA
-#       define PyAPI_DATA(RTYPE) extern RTYPE
-#endif
-#ifndef PyMODINIT_FUNC
-#       if defined(__cplusplus)
-#               define PyMODINIT_FUNC extern "C" PyObject*
-#       else /* __cplusplus */
-#               define PyMODINIT_FUNC PyObject*
-#       endif /* __cplusplus */
-#endif
-"""
-
-PYPORT_EXPORT_REPLACE_NEW = b"""
-#include "exports.h"
-#define PyAPI_FUNC(RTYPE) __declspec(dllexport) RTYPE
-#define PyAPI_DATA(RTYPE) extern __declspec(dllexport) RTYPE
-#define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-"""
-
-PYPORT_EXPORT_REPLACE_OLD = b"""
-#define PyAPI_FUNC(RTYPE) __declspec(dllexport) RTYPE
-#define PyAPI_DATA(RTYPE) extern __declspec(dllexport) RTYPE
-#define PyMODINIT_FUNC __declspec(dllexport) PyObject*
-"""
-
-CTYPES_INIT_REPLACE = b"""
-if _os.name == "nt":
-    pythonapi = PyDLL("python dll", None, _sys.dllhandle)
-elif _sys.platform == "cygwin":
-    pythonapi = PyDLL("libpython%d.%d.dll" % _sys.version_info[:2])
-else:
-    pythonapi = PyDLL(None)
-"""
-
-SYSMODULE_WINVER_SEARCH = b"""
-#ifdef MS_COREDLL
-    SET_SYS("dllhandle", PyLong_FromVoidPtr(PyWin_DLLhModule));
-    SET_SYS_FROM_STRING("winver", PyWin_DLLVersionString);
-#endif
-"""
-
-SYSMODULE_WINVER_REPLACE = b"""
-#ifdef MS_COREDLL
-    SET_SYS("dllhandle", PyLong_FromVoidPtr(PyWin_DLLhModule));
-    SET_SYS_FROM_STRING("winver", PyWin_DLLVersionString);
-#else
-    SET_SYS_FROM_STRING("winver", "%s");
-#endif
-"""
-
-SYSMODULE_WINVER_SEARCH_38 = b"""
-#ifdef MS_COREDLL
-    SET_SYS_FROM_STRING("dllhandle",
-                        PyLong_FromVoidPtr(PyWin_DLLhModule));
-    SET_SYS_FROM_STRING("winver",
-                        PyUnicode_FromString(PyWin_DLLVersionString));
-#endif
-"""
-
-
-SYSMODULE_WINVER_REPLACE_38 = b"""
-#ifdef MS_COREDLL
-    SET_SYS_FROM_STRING("dllhandle",
-                        PyLong_FromVoidPtr(PyWin_DLLhModule));
-    SET_SYS_FROM_STRING("winver",
-                        PyUnicode_FromString(PyWin_DLLVersionString));
-#else
-    SET_SYS_FROM_STRING("winver", PyUnicode_FromString("%s"));
-#endif
-"""
-
-
 def run_msbuild(
     msbuild: pathlib.Path,
     pcbuild_path: pathlib.Path,
@@ -845,6 +658,7 @@ def run_msbuild(
     platform: str,
     python_version: str,
     windows_sdk_version: str,
+    freethreaded: bool,
 ):
     args = [
         str(msbuild),
@@ -866,6 +680,9 @@ def run_msbuild(
         # SDK as of at least CPython 3.9.7.
         f"/property:DefaultWindowsSDKVersion={windows_sdk_version}",
     ]
+
+    if freethreaded:
+        args.append("/property:DisableGil=true")
 
     exec_and_log(args, str(pcbuild_path), os.environ)
 
@@ -1118,6 +935,8 @@ def collect_python_build_artifacts(
     arch: str,
     config: str,
     openssl_entry: str,
+    zlib_entry: str,
+    freethreaded: bool,
 ):
     """Collect build artifacts from Python.
 
@@ -1199,6 +1018,9 @@ def collect_python_build_artifacts(
         "sqlite3",
     }
 
+    if zlib_entry == "zlib-ng":
+        depends_projects |= {"zlib-ng"}
+
     known_projects = (
         ignore_projects | other_projects | depends_projects | extension_projects
     )
@@ -1243,6 +1065,20 @@ def collect_python_build_artifacts(
 
         return set()
 
+    if arch == "amd64":
+        abi_platform = "win_amd64"
+    elif arch == "win32":
+        abi_platform = "win32"
+    else:
+        raise ValueError("unhandled arch: %s" % arch)
+
+    if freethreaded:
+        abi_tag = ".cp%st-%s" % (python_majmin, abi_platform)
+        lib_suffix = "t"
+    else:
+        abi_tag = ""
+        lib_suffix = ""
+
     # Copy object files for core sources into their own directory.
     core_dir = out_dir / "build" / "core"
     core_dir.mkdir(parents=True)
@@ -1263,12 +1099,12 @@ def collect_python_build_artifacts(
     exts = ("lib", "exp")
 
     for ext in exts:
-        source = outputs_path / ("python%s.%s" % (python_majmin, ext))
-        dest = core_dir / ("python%s.%s" % (python_majmin, ext))
+        source = outputs_path / ("python%s%s.%s" % (python_majmin, lib_suffix, ext))
+        dest = core_dir / ("python%s%s.%s" % (python_majmin, lib_suffix, ext))
         log("copying %s" % source)
         shutil.copyfile(source, dest)
 
-    res["core"]["shared_lib"] = "install/python%s.dll" % python_majmin
+    res["core"]["shared_lib"] = "install/python%s%s.dll" % (python_majmin, lib_suffix)
 
     # We hack up pythoncore.vcxproj and the list in it when this function
     # runs isn't totally accurate. We hardcode the list from the CPython
@@ -1282,15 +1118,9 @@ def collect_python_build_artifacts(
         {"name": "Ole32", "system": True},
         {"name": "OleAut32", "system": True},
         {"name": "User32", "system": True},
+        # Presence of pathcch drops support for Windows 7.
+        {"name": "pathcch", "system": True},
     ]
-
-    # pathcch is required on 3.9+ and its presence drops support for Windows 7.
-    if python_majmin != "38":
-        res["core"]["links"].append({"name": "pathcch", "system": True})
-
-    # shlwapi was dropped from 3.9.9+.
-    if python_majmin == "38":
-        res["core"]["links"].append({"name": "shlwapi", "system": True})
 
     # Copy files for extensions into their own directories.
     for ext in sorted(extension_projects):
@@ -1338,6 +1168,13 @@ def collect_python_build_artifacts(
                 if name == "openssl":
                     name = openssl_entry
 
+                if name == "zlib":
+                    name = zlib_entry
+
+                # On 3.14+, we use the latest tcl/tk version
+                if ext == "_tkinter" and python_majmin == "314":
+                    name = name.replace("-8612", "")
+
                 download_entry = DOWNLOADS[name]
 
                 # This will raise if no license metadata defined. This is
@@ -1354,12 +1191,15 @@ def collect_python_build_artifacts(
         res["extensions"][ext] = [entry]
 
         # Copy the extension static library.
-        ext_static = outputs_path / ("%s.lib" % ext)
-        dest = dest_dir / ("%s.lib" % ext)
+        ext_static = outputs_path / ("%s%s.lib" % (ext, abi_tag))
+        dest = dest_dir / ("%s%s.lib" % (ext, abi_tag))
         log("copying static extension %s" % ext_static)
         shutil.copyfile(ext_static, dest)
 
-        res["extensions"][ext][0]["shared_lib"] = "install/DLLs/%s.pyd" % ext
+        res["extensions"][ext][0]["shared_lib"] = "install/DLLs/%s%s.pyd" % (
+            ext,
+            abi_tag,
+        )
 
     lib_dir = out_dir / "build" / "lib"
     lib_dir.mkdir()
@@ -1394,6 +1234,7 @@ def build_cpython(
 ) -> pathlib.Path:
     parsed_build_options = set(build_options.split("+"))
     pgo = "pgo" in parsed_build_options
+    freethreaded = "freethreaded" in parsed_build_options
 
     msbuild = find_msbuild(msvc_version)
     log("found MSBuild at %s" % msbuild)
@@ -1401,21 +1242,38 @@ def build_cpython(
     # The python.props file keys off MSBUILD, so it needs to be set.
     os.environ["MSBUILD"] = str(msbuild)
 
-    bzip2_archive = download_entry("bzip2", BUILD)
-    sqlite_archive = download_entry("sqlite", BUILD)
-    tk_bin_archive = download_entry(
-        "tk-windows-bin", BUILD, local_name="tk-windows-bin.tar.gz"
-    )
-    xz_archive = download_entry("xz", BUILD)
-    zlib_archive = download_entry("zlib", BUILD)
-
     python_archive = download_entry(python_entry_name, BUILD)
     entry = DOWNLOADS[python_entry_name]
-
     python_version = entry["version"]
+
+    zlib_entry = (
+        "zlib-ng" if meets_python_minimum_version(python_version, "3.14") else "zlib"
+    )
+
+    bzip2_archive = download_entry("bzip2", BUILD)
+    sqlite_archive = download_entry("sqlite", BUILD)
+    xz_archive = download_entry("xz", BUILD)
+    zlib_archive = download_entry(zlib_entry, BUILD)
 
     setuptools_wheel = download_entry("setuptools", BUILD)
     pip_wheel = download_entry("pip", BUILD)
+
+    # On CPython 3.14+, we use the latest tcl/tk version which has additional runtime
+    # dependencies, so we are conservative and use the old version elsewhere.
+    if meets_python_minimum_version(python_version, "3.14"):
+        tk_bin_archive = download_entry(
+            "tk-windows-bin", BUILD, local_name="tk-windows-bin.tar.gz"
+        )
+    else:
+        tk_bin_archive = download_entry(
+            "tk-windows-bin-8612", BUILD, local_name="tk-windows-bin.tar.gz"
+        )
+
+    # On CPython 3.14+, zstd is included
+    if meets_python_minimum_version(python_version, "3.14"):
+        zstd_archive = download_entry("zstd", BUILD)
+    else:
+        zstd_archive = None
 
     # CPython 3.13+ no longer uses a bundled `mpdecimal` version so we build it
     if meets_python_minimum_version(python_version, "3.13"):
@@ -1424,6 +1282,14 @@ def build_cpython(
         # TODO: Consider using the built mpdecimal for earlier versions as well,
         # as we do for Unix builds.
         mpdecimal_archive = None
+
+    if freethreaded:
+        (major, minor, _) = python_version.split(".")
+        python_exe = f"python{major}.{minor}t.exe"
+        pythonw_exe = f"pythonw{major}.{minor}t.exe"
+    else:
+        python_exe = "python.exe"
+        pythonw_exe = "pythonw.exe"
 
     if arch == "amd64":
         build_platform = "x64"
@@ -1434,7 +1300,10 @@ def build_cpython(
     else:
         raise ValueError("unhandled arch: %s" % arch)
 
-    with tempfile.TemporaryDirectory(prefix="python-build-") as td:
+    tempdir_opts = (
+        {"ignore_cleanup_errors": True} if sys.version_info >= (3, 12) else {}
+    )
+    with tempfile.TemporaryDirectory(prefix="python-build-", **tempdir_opts) as td:
         td = pathlib.Path(td)
 
         with concurrent.futures.ThreadPoolExecutor(10) as e:
@@ -1448,6 +1317,7 @@ def build_cpython(
                 tk_bin_archive,
                 xz_archive,
                 zlib_archive,
+                zstd_archive,
             ):
                 if a is None:
                     continue
@@ -1497,6 +1367,7 @@ def build_cpython(
             cpython_source_path,
             build_directory,
             python_version=python_version,
+            zlib_entry=zlib_entry,
         )
 
         if pgo:
@@ -1507,6 +1378,7 @@ def build_cpython(
                 platform=build_platform,
                 python_version=python_version,
                 windows_sdk_version=windows_sdk_version,
+                freethreaded=freethreaded,
             )
 
             # build-windows.py sets some environment variables which cause the
@@ -1526,7 +1398,7 @@ def build_cpython(
             # test execution. We work around this by invoking the test harness
             # separately for each test.
             instrumented_python = (
-                pcbuild_path / build_directory / "instrumented" / "python.exe"
+                pcbuild_path / build_directory / "instrumented" / python_exe
             )
 
             tests = subprocess.run(
@@ -1572,6 +1444,7 @@ def build_cpython(
                 platform=build_platform,
                 python_version=python_version,
                 windows_sdk_version=windows_sdk_version,
+                freethreaded=freethreaded,
             )
             artifact_config = "PGUpdate"
 
@@ -1583,6 +1456,7 @@ def build_cpython(
                 platform=build_platform,
                 python_version=python_version,
                 windows_sdk_version=windows_sdk_version,
+                freethreaded=freethreaded,
             )
             artifact_config = "Release"
 
@@ -1615,6 +1489,9 @@ def build_cpython(
             "--include-venv",
         ]
 
+        if freethreaded:
+            args.append("--include-freethreaded")
+
         # CPython 3.12 removed distutils.
         if not meets_python_minimum_version(python_version, "3.12"):
             args.append("--include-distutils")
@@ -1639,7 +1516,7 @@ def build_cpython(
         # Install pip and setuptools.
         exec_and_log(
             [
-                str(install_dir / "python.exe"),
+                str(install_dir / python_exe),
                 "-m",
                 "pip",
                 "install",
@@ -1656,7 +1533,7 @@ def build_cpython(
         if meets_python_maximum_version(python_version, "3.11"):
             exec_and_log(
                 [
-                    str(install_dir / "python.exe"),
+                    str(install_dir / python_exe),
                     "-m",
                     "pip",
                     "install",
@@ -1691,6 +1568,8 @@ def build_cpython(
             build_directory,
             artifact_config,
             openssl_entry=openssl_entry,
+            zlib_entry=zlib_entry,
+            freethreaded=freethreaded,
         )
 
         for ext, init_fn in sorted(builtin_extensions.items()):
@@ -1722,6 +1601,24 @@ def build_cpython(
             dest = out_dir / "python" / "build" / "lib" / name
             log("copying %s to %s" % (source, dest))
             shutil.copyfile(source, dest)
+
+        # Create a `python.exe` copy when an alternative executable is built, e.g., when
+        # free-threading is enabled the name is `python3.13t.exe`.
+        canonical_python_exe = install_dir / "python.exe"
+        if not canonical_python_exe.exists():
+            shutil.copy2(
+                install_dir / python_exe,
+                canonical_python_exe,
+            )
+
+        # Create a `pythonw.exe` copy when an alternative executable is built, e.g., when
+        # free-threading is enabled the name is `pythonw3.13t.exe`.
+        canonical_pythonw_exe = install_dir / "pythonw.exe"
+        if not canonical_pythonw_exe.exists():
+            shutil.copy2(
+                install_dir / pythonw_exe,
+                canonical_pythonw_exe,
+            )
 
         # CPython 3.13 removed `run_tests.py`, we provide a compatibility script
         # for now.
@@ -1775,13 +1672,12 @@ def build_cpython(
         }
 
         # Collect information from running Python script.
-        python_exe = out_dir / "python" / "install" / "python.exe"
         metadata_path = td / "metadata.json"
         env = dict(os.environ)
         env["ROOT"] = str(out_dir / "python")
         subprocess.run(
             [
-                str(python_exe),
+                str(canonical_python_exe),
                 str(SUPPORT / "generate_metadata.py"),
                 str(metadata_path),
             ],
@@ -1851,18 +1747,18 @@ def main() -> None:
     parser.add_argument(
         "--vs",
         choices={"2019", "2022"},
-        default="2019",
+        default="2022",
         help="Visual Studio version to use",
     )
     parser.add_argument(
         "--python",
         choices={
-            "cpython-3.8",
             "cpython-3.9",
             "cpython-3.10",
             "cpython-3.11",
             "cpython-3.12",
             "cpython-3.13",
+            "cpython-3.14",
         },
         default="cpython-3.11",
         help="Python distribution to build",
@@ -1903,7 +1799,7 @@ def main() -> None:
         # CPython 3.11+ have native support for OpenSSL 3.x. We anticipate this
         # will change in a future minor release once OpenSSL 1.1 goes out of support.
         # But who knows.
-        if args.python in ("cpython-3.8", "cpython-3.9", "cpython-3.10"):
+        if args.python in ("cpython-3.9", "cpython-3.10"):
             openssl_entry = "openssl-1.1"
         else:
             openssl_entry = "openssl-3.0"
@@ -1950,21 +1846,11 @@ def main() -> None:
             release_tag = release_tag_from_git()
 
         # Create, e.g., `cpython-3.10.13+20240224-x86_64-pc-windows-msvc-pgo.tar.zst`.
-        dest_path = compress_python_archive(
+        compress_python_archive(
             tar_path,
             DIST,
             "%s-%s" % (tar_path.stem, release_tag),
         )
-
-        # Copy to, e.g., `cpython-3.10.13+20240224-x86_64-pc-windows-msvc-shared-pgo.tar.zst`.
-        # The 'shared-' prefix is no longer needed, but we're double-publishing under
-        # both names during the transition period.
-        filename: str = dest_path.name
-        if not filename.endswith("-%s-%s.tar.zst" % (args.options, release_tag)):
-            raise ValueError("expected filename to end with profile: %s" % filename)
-        filename = filename.removesuffix("-%s-%s.tar.zst" % (args.options, release_tag))
-        filename = filename + "-shared-%s-%s.tar.zst" % (args.options, release_tag)
-        shutil.copy2(dest_path, dest_path.with_name(filename))
 
 
 if __name__ == "__main__":

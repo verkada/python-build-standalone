@@ -39,10 +39,13 @@ const RECOGNIZED_TRIPLES: &[&str] = &[
     "arm64-apple-tvos",
     "i686-pc-windows-msvc",
     "i686-unknown-linux-gnu",
+    // Note there's build support for mips* targets but they are not tested
+    // See https://github.com/astral-sh/python-build-standalone/issues/412
     "mips-unknown-linux-gnu",
     "mipsel-unknown-linux-gnu",
     "mips64el-unknown-linux-gnuabi64",
     "ppc64le-unknown-linux-gnu",
+    "riscv64-unknown-linux-gnu",
     "s390x-unknown-linux-gnu",
     "thumbv7k-apple-watchos",
     "x86_64-apple-darwin",
@@ -107,6 +110,7 @@ const PE_ALLOWED_LIBRARIES: &[&str] = &[
     "USERENV.dll",
     "VERSION.dll",
     "VCRUNTIME140.dll",
+    "VCRUNTIME140_1.dll",
     "WINMM.dll",
     "WS2_32.dll",
     // Our libraries.
@@ -120,16 +124,21 @@ const PE_ALLOWED_LIBRARIES: &[&str] = &[
     "libssl-3.dll",
     "libssl-3-x64.dll",
     "python3.dll",
-    "python38.dll",
     "python39.dll",
     "python310.dll",
     "python311.dll",
     "python312.dll",
     "python313.dll",
+    "python313t.dll",
+    "python314.dll",
+    "python314t.dll",
     "sqlite3.dll",
     "tcl86t.dll",
     "tk86t.dll",
 ];
+
+// CPython 3.14 uses tcl/tk 8.6.14+ which includes a bundled zlib and dynamically links to msvcrt.
+const PE_ALLOWED_LIBRARIES_314: &[&str] = &["msvcrt.dll", "zlib1.dll"];
 
 static GLIBC_MAX_VERSION_BY_TRIPLE: Lazy<HashMap<&'static str, version_compare::Version<'static>>> =
     Lazy::new(|| {
@@ -166,6 +175,10 @@ static GLIBC_MAX_VERSION_BY_TRIPLE: Lazy<HashMap<&'static str, version_compare::
         versions.insert(
             "ppc64le-unknown-linux-gnu",
             version_compare::Version::from("2.17").unwrap(),
+        );
+        versions.insert(
+            "riscv64-unknown-linux-gnu",
+            version_compare::Version::from("2.28").unwrap(),
         );
         versions.insert(
             "s390x-unknown-linux-gnu",
@@ -221,10 +234,17 @@ static ELF_ALLOWED_LIBRARIES_BY_TRIPLE: Lazy<HashMap<&'static str, Vec<&'static 
                 vec!["ld-linux-armhf.so.3", "libgcc_s.so.1"],
             ),
             ("i686-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
-            ("mips-unknown-linux-gnu", vec!["ld.so.1"]),
-            ("mipsel-unknown-linux-gnu", vec!["ld.so.1"]),
+            ("mips-unknown-linux-gnu", vec!["ld.so.1", "libatomic.so.1"]),
+            (
+                "mipsel-unknown-linux-gnu",
+                vec!["ld.so.1", "libatomic.so.1"],
+            ),
             ("mips64el-unknown-linux-gnuabi64", vec![]),
             ("ppc64le-unknown-linux-gnu", vec!["ld64.so.1", "ld64.so.2"]),
+            (
+                "riscv64-unknown-linux-gnu",
+                vec!["ld-linux-riscv64-lp64d.so.1", "libatomic.so.1"],
+            ),
             ("s390x-unknown-linux-gnu", vec!["ld64.so.1"]),
             ("x86_64-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
             ("x86_64_v2-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
@@ -238,16 +258,6 @@ static ELF_ALLOWED_LIBRARIES_BY_TRIPLE: Lazy<HashMap<&'static str, Vec<&'static 
 
 static DARWIN_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
     [
-            MachOAllowedDylib {
-                name: "@executable_path/../lib/libpython3.8.dylib".to_string(),
-                max_compatibility_version: "3.8.0".try_into().unwrap(),
-                required: false,
-            },
-            MachOAllowedDylib {
-                name: "@executable_path/../lib/libpython3.8d.dylib".to_string(),
-                max_compatibility_version: "3.8.0".try_into().unwrap(),
-                required: false,
-            },
             MachOAllowedDylib {
                 name: "@executable_path/../lib/libpython3.9.dylib".to_string(),
                 max_compatibility_version: "3.9.0".try_into().unwrap(),
@@ -309,6 +319,26 @@ static DARWIN_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
                 required: false,
             },
             MachOAllowedDylib {
+                name: "@executable_path/../lib/libpython3.14.dylib".to_string(),
+                max_compatibility_version: "3.14.0".try_into().unwrap(),
+                required: false,
+            },
+            MachOAllowedDylib {
+                name: "@executable_path/../lib/libpython3.14d.dylib".to_string(),
+                max_compatibility_version: "3.14.0".try_into().unwrap(),
+                required: false,
+            },
+            MachOAllowedDylib {
+                name: "@executable_path/../lib/libpython3.14t.dylib".to_string(),
+                max_compatibility_version: "3.14.0".try_into().unwrap(),
+                required: false,
+            },
+            MachOAllowedDylib {
+                name: "@executable_path/../lib/libpython3.14td.dylib".to_string(),
+                max_compatibility_version: "3.14.0".try_into().unwrap(),
+                required: false,
+            },
+            MachOAllowedDylib {
                 name: "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit".to_string(),
                 max_compatibility_version: "45.0.0".try_into().unwrap(),
                 required: true,
@@ -367,6 +397,11 @@ static DARWIN_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
             },
             MachOAllowedDylib {
                 name: "/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration".to_string(),
+                max_compatibility_version: "1.0.0".try_into().unwrap(),
+                required: true,
+            },
+            MachOAllowedDylib {
+                name: "/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers".to_string(),
                 max_compatibility_version: "1.0.0".try_into().unwrap(),
                 required: true,
             },
@@ -470,8 +505,9 @@ static PLATFORM_TAG_BY_TRIPLE: Lazy<HashMap<&'static str, &'static str>> = Lazy:
         ("mipsel-unknown-linux-gnu", "linux-mipsel"),
         ("mips64el-unknown-linux-gnuabi64", "todo"),
         ("ppc64le-unknown-linux-gnu", "linux-powerpc64le"),
+        ("riscv64-unknown-linux-gnu", "linux-riscv64"),
         ("s390x-unknown-linux-gnu", "linux-s390x"),
-        ("x86_64-apple-darwin", "macosx-10.9-x86_64"),
+        ("x86_64-apple-darwin", "macosx-10.15-x86_64"),
         ("x86_64-apple-ios", "iOS-x86_64"),
         ("x86_64-pc-windows-msvc", "win-amd64"),
         ("x86_64-unknown-linux-gnu", "linux-x86_64"),
@@ -491,28 +527,6 @@ static PLATFORM_TAG_BY_TRIPLE: Lazy<HashMap<&'static str, &'static str>> = Lazy:
 const ELF_BANNED_SYMBOLS: &[&str] = &[
     // Deprecated as of glibc 2.34 in favor of sched_yield.
     "pthread_yield",
-];
-
-/// Mach-O symbols that can be weakly linked on Python 3.8.
-const MACHO_ALLOWED_WEAK_SYMBOLS_38_NON_AARCH64: &[&str] = &[
-    // Internal to Apple SDK. However, the symbol isn't guarded properly in some Apple
-    // SDKs. See https://github.com/indygreg/PyOxidizer/issues/373.
-    "___darwin_check_fd_set_overflow",
-    // Used by compiler-rt in 17.0.0. LLVM commit b653a2823fe4b4c9c6d85cfe119f31d8e70c2fa0.
-    "__availability_version_check",
-    // Appears to get inserted by Clang.
-    "_dispatch_once_f",
-    // Used by CPython. But is has runtime availability guards in 3.8 (one of the few
-    // symbols that does).
-    "__dyld_shared_cache_contains_path",
-    // Used by CPython without guards but the symbol is so old it doesn't matter.
-    "_inet_aton",
-    // Used by tk. It does availability guards properly.
-    "_NSAppearanceNameDarkAqua",
-    // Older than 10.9.
-    "_fstatvfs",
-    "_lchown",
-    "_statvfs",
 ];
 
 /// Symbols defined in dependency packages.
@@ -657,6 +671,7 @@ const GLOBAL_EXTENSIONS: &[&str] = &[
     "_tracemalloc",
     "_warnings",
     "_weakref",
+    "_uuid",
     "array",
     "atexit",
     "binascii",
@@ -690,14 +705,11 @@ const GLOBAL_EXTENSIONS: &[&str] = &[
 // We didn't build ctypes_test until 3.9.
 // We didn't build some test extensions until 3.9.
 
-const GLOBAL_EXTENSIONS_PYTHON_3_8: &[&str] = &["audioop", "_sha256", "_sha512", "parser"];
-
 const GLOBAL_EXTENSIONS_PYTHON_3_9: &[&str] = &[
     "audioop",
     "_peg_parser",
     "_sha256",
     "_sha512",
-    "_uuid",
     "_xxsubinterpreters",
     "_zoneinfo",
     "parser",
@@ -707,7 +719,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_10: &[&str] = &[
     "audioop",
     "_sha256",
     "_sha512",
-    "_uuid",
     "_xxsubinterpreters",
     "_zoneinfo",
 ];
@@ -718,7 +729,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_11: &[&str] = &[
     "_sha512",
     "_tokenize",
     "_typing",
-    "_uuid",
     "_xxsubinterpreters",
     "_zoneinfo",
 ];
@@ -738,16 +748,31 @@ const GLOBAL_EXTENSIONS_PYTHON_3_13: &[&str] = &[
     "_interpqueues",
     "_interpreters",
     "_sha2",
+    "_suggestions",
     "_sysconfig",
     "_tokenize",
     "_typing",
     "_zoneinfo",
 ];
 
+const GLOBAL_EXTENSIONS_PYTHON_3_14: &[&str] = &[
+    "_interpchannels",
+    "_interpqueues",
+    "_interpreters",
+    "_remote_debugging",
+    "_sha2",
+    "_suggestions",
+    "_sysconfig",
+    "_tokenize",
+    "_typing",
+    "_zoneinfo",
+    "_hmac",
+    "_types",
+];
+
 const GLOBAL_EXTENSIONS_MACOS: &[&str] = &["_scproxy"];
 
 const GLOBAL_EXTENSIONS_POSIX: &[&str] = &[
-    "_crypt",
     "_ctypes_test",
     "_curses",
     "_curses_panel",
@@ -765,6 +790,8 @@ const GLOBAL_EXTENSIONS_POSIX: &[&str] = &[
     "termios",
 ];
 
+const GLOBAL_EXTENSIONS_POSIX_PRE_3_13: &[&str] = &["_crypt"];
+
 const GLOBAL_EXTENSIONS_LINUX_PRE_3_13: &[&str] = &["spwd"];
 
 const GLOBAL_EXTENSIONS_WINDOWS: &[&str] = &[
@@ -775,6 +802,9 @@ const GLOBAL_EXTENSIONS_WINDOWS: &[&str] = &[
     "winreg",
     "winsound",
 ];
+
+// TODO(zanieb): Move `_zstd` to non-Windows specific once we add support on Unix.
+const GLOBAL_EXTENSIONS_WINDOWS_3_14: &[&str] = &["_wmi", "_zstd"];
 
 const GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13: &[&str] = &["_msi"];
 
@@ -862,6 +892,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
         "mipsel-unknown-linux-gnu" => object::elf::EM_MIPS,
         "mips64el-unknown-linux-gnuabi64" => 0,
         "ppc64le-unknown-linux-gnu" => object::elf::EM_PPC64,
+        "riscv64-unknown-linux-gnu" => object::elf::EM_RISCV,
         "s390x-unknown-linux-gnu" => object::elf::EM_S390,
         "x86_64-unknown-linux-gnu" => object::elf::EM_X86_64,
         "x86_64_v2-unknown-linux-gnu" => object::elf::EM_X86_64,
@@ -893,22 +924,38 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
         allowed_libraries.extend(extra.iter().map(|x| x.to_string()));
     }
 
-    allowed_libraries.push(format!(
-        "$ORIGIN/../lib/libpython{}.so.1.0",
-        python_major_minor
-    ));
-    allowed_libraries.push(format!(
-        "$ORIGIN/../lib/libpython{}d.so.1.0",
-        python_major_minor
-    ));
-    allowed_libraries.push(format!(
-        "$ORIGIN/../lib/libpython{}t.so.1.0",
-        python_major_minor
-    ));
-    allowed_libraries.push(format!(
-        "$ORIGIN/../lib/libpython{}td.so.1.0",
-        python_major_minor
-    ));
+    if json.libpython_link_mode == "shared" {
+        if target_triple.contains("-musl") {
+            // On musl, we link to `libpython` and rely on `RUN PATH`
+            allowed_libraries.push(format!("libpython{}.so.1.0", python_major_minor));
+            allowed_libraries.push(format!("libpython{}d.so.1.0", python_major_minor));
+            allowed_libraries.push(format!("libpython{}t.so.1.0", python_major_minor));
+            allowed_libraries.push(format!("libpython{}td.so.1.0", python_major_minor));
+        } else {
+            // On glibc, we can use `$ORIGIN` for relative, reloctable linking
+            allowed_libraries.push(format!(
+                "$ORIGIN/../lib/libpython{}.so.1.0",
+                python_major_minor
+            ));
+            allowed_libraries.push(format!(
+                "$ORIGIN/../lib/libpython{}d.so.1.0",
+                python_major_minor
+            ));
+            allowed_libraries.push(format!(
+                "$ORIGIN/../lib/libpython{}t.so.1.0",
+                python_major_minor
+            ));
+            allowed_libraries.push(format!(
+                "$ORIGIN/../lib/libpython{}td.so.1.0",
+                python_major_minor
+            ));
+        }
+    }
+
+    if !json.build_options.contains("static") && target_triple.contains("-musl") {
+        // Allow linking musl `libc`
+        allowed_libraries.push("libc.so".to_string());
+    }
 
     // Allow the _crypt extension module - and only it - to link against libcrypt,
     // which is no longer universally present in Linux distros.
@@ -1048,15 +1095,11 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
 
                 // Ensure specific symbols in dynamic binaries have proper visibility.
                 if matches!(elf.e_type(endian), ET_EXEC | ET_DYN) {
-                    // Python 3.8 exports ffi symbols for legacy reasons.
-                    let is_exception = name == "ffi_type_void" && python_major_minor == "3.8";
-
                     // Non-local symbols belonging to dependencies should have hidden visibility
                     // to prevent them from being exported.
                     if DEPENDENCY_PACKAGE_SYMBOLS.contains(&name.as_ref())
                         && matches!(symbol.st_bind(), STB_GLOBAL | STB_WEAK)
                         && symbol.st_visibility() != STV_HIDDEN
-                        && !is_exception
                     {
                         context.errors.push(format!(
                             "{} contains non-hidden dependency symbol {}",
@@ -1104,7 +1147,6 @@ fn parse_version_nibbles(v: u32) -> semver::Version {
 fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
     context: &mut ValidationContext,
     target_triple: &str,
-    python_major_minor: &str,
     advertised_target_version: &str,
     advertised_sdk_version: &str,
     path: &Path,
@@ -1235,12 +1277,8 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
                             name.as_str()
                         };
 
-                        // Python 3.8 exports ffi symbols for legacy reasons.
-                        let is_exception = name == "_ffi_type_void" && python_major_minor == "3.8";
-
                         if DEPENDENCY_PACKAGE_SYMBOLS.contains(&search_name)
                             && scope == SymbolScope::Dynamic
-                            && !is_exception
                         {
                             context.errors.push(format!(
                                 "{} contains dynamic symbol from dependency {}",
@@ -1320,6 +1358,7 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
 
 fn validate_pe<'data, Pe: ImageNtHeaders>(
     context: &mut ValidationContext,
+    python_major_minor: &str,
     path: &Path,
     pe: &PeFile<'data, Pe, &'data [u8]>,
 ) -> Result<()> {
@@ -1334,6 +1373,18 @@ fn validate_pe<'data, Pe: ImageNtHeaders>(
         while let Some(descriptor) = descriptors.next()? {
             let lib = import_table.name(descriptor.name.get(object::LittleEndian))?;
             let lib = String::from_utf8(lib.to_vec())?;
+
+            match python_major_minor {
+                "3.9" | "3.10" | "3.11" | "3.12" | "3.13" => {}
+                "3.14" => {
+                    if PE_ALLOWED_LIBRARIES_314.contains(&lib.as_str()) {
+                        continue;
+                    }
+                }
+                _ => {
+                    panic!("unhandled Python version: {}", python_major_minor);
+                }
+            }
 
             if !PE_ALLOWED_LIBRARIES.contains(&lib.as_str()) {
                 context
@@ -1403,7 +1454,6 @@ fn validate_possible_object_file(
                 validate_macho(
                     &mut context,
                     triple,
-                    python_major_minor,
                     json.apple_sdk_deployment_target
                         .as_ref()
                         .expect("apple_sdk_deployment_target should be set"),
@@ -1421,7 +1471,6 @@ fn validate_possible_object_file(
                 validate_macho(
                     &mut context,
                     triple,
-                    python_major_minor,
                     json.apple_sdk_deployment_target
                         .as_ref()
                         .expect("apple_sdk_deployment_target should be set"),
@@ -1442,11 +1491,11 @@ fn validate_possible_object_file(
             }
             FileKind::Pe32 => {
                 let file = PeFile32::parse(data)?;
-                validate_pe(&mut context, path, &file)?;
+                validate_pe(&mut context, python_major_minor, path, &file)?;
             }
             FileKind::Pe64 => {
                 let file = PeFile64::parse(data)?;
-                validate_pe(&mut context, path, &file)?;
+                validate_pe(&mut context, python_major_minor, path, &file)?;
             }
             _ => {}
         }
@@ -1477,9 +1526,6 @@ fn validate_extension_modules(
     let mut wanted = BTreeSet::from_iter(GLOBAL_EXTENSIONS.iter().copied());
 
     match python_major_minor {
-        "3.8" => {
-            wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_8);
-        }
         "3.9" => {
             wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_9);
         }
@@ -1495,6 +1541,9 @@ fn validate_extension_modules(
         "3.13" => {
             wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_13);
         }
+        "3.14" => {
+            wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_14);
+        }
         _ => {
             panic!("unhandled Python version: {}", python_major_minor);
         }
@@ -1502,21 +1551,23 @@ fn validate_extension_modules(
 
     if is_macos {
         wanted.extend(GLOBAL_EXTENSIONS_POSIX);
-        if python_major_minor == "3.13" {
-            wanted.remove("_crypt");
+
+        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+            wanted.extend(GLOBAL_EXTENSIONS_POSIX_PRE_3_13);
         }
+
         wanted.extend(GLOBAL_EXTENSIONS_MACOS);
     }
 
     if is_windows {
         wanted.extend(GLOBAL_EXTENSIONS_WINDOWS);
 
-        if python_major_minor == "3.8" {
-            wanted.insert("_xxsubinterpreters");
+        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+            wanted.extend(GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13);
         }
 
-        if matches!(python_major_minor, "3.8" | "3.9" | "3.10" | "3.11" | "3.12") {
-            wanted.extend(GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13);
+        if matches!(python_major_minor, "3.14") {
+            wanted.extend(GLOBAL_EXTENSIONS_WINDOWS_3_14);
         }
 
         if static_crt {
@@ -1528,27 +1579,21 @@ fn validate_extension_modules(
 
     if is_linux {
         wanted.extend(GLOBAL_EXTENSIONS_POSIX);
-        // TODO: If there are more differences for `GLOBAL_EXTENSIONS_POSIX` in future Python
-        // versions, we should move the `_crypt` special-case into a constant
-        if python_major_minor == "3.13" {
-            wanted.remove("_crypt");
+
+        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+            wanted.extend(GLOBAL_EXTENSIONS_POSIX_PRE_3_13);
         }
-        if matches!(python_major_minor, "3.8" | "3.9" | "3.10" | "3.11" | "3.12") {
+
+        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
             wanted.extend(GLOBAL_EXTENSIONS_LINUX_PRE_3_13);
         }
 
-        if !is_linux_musl && matches!(python_major_minor, "3.8" | "3.9" | "3.10" | "3.11" | "3.12")
-        {
+        if !is_linux_musl && matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
             wanted.insert("ossaudiodev");
         }
     }
 
-    if (is_linux || is_macos)
-        && matches!(
-            python_major_minor,
-            "3.9" | "3.10" | "3.11" | "3.12" | "3.13"
-        )
-    {
+    if is_linux || is_macos {
         wanted.extend([
             "_testbuffer",
             "_testimportmultiple",
@@ -1557,21 +1602,12 @@ fn validate_extension_modules(
         ]);
     }
 
-    if (is_linux || is_macos) && python_major_minor == "3.13" {
-        wanted.extend(["_suggestions", "_testexternalinspection"]);
+    if (is_linux || is_macos) && matches!(python_major_minor, "3.13") {
+        wanted.insert("_testexternalinspection");
     }
 
-    if (is_linux || is_macos) && matches!(python_major_minor, "3.12" | "3.13") {
+    if (is_linux || is_macos) && matches!(python_major_minor, "3.12" | "3.13" | "3.14") {
         wanted.insert("_testsinglephase");
-    }
-
-    // _uuid is POSIX only on 3.8. On 3.9, it is global.
-    if python_major_minor == "3.8" {
-        if is_linux || is_macos {
-            wanted.insert("_uuid");
-        }
-    } else {
-        wanted.insert("_uuid");
     }
 
     // _wmi is Windows only on 3.12+.
@@ -1688,9 +1724,7 @@ fn validate_distribution(
             )
         })?;
 
-    let python_major_minor = if dist_filename.starts_with("cpython-3.8.") {
-        "3.8"
-    } else if dist_filename.starts_with("cpython-3.9.") {
+    let python_major_minor = if dist_filename.starts_with("cpython-3.9.") {
         "3.9"
     } else if dist_filename.starts_with("cpython-3.10.") {
         "3.10"
@@ -1700,13 +1734,14 @@ fn validate_distribution(
         "3.12"
     } else if dist_filename.starts_with("cpython-3.13.") {
         "3.13"
+    } else if dist_filename.starts_with("cpython-3.14.") {
+        "3.14"
     } else {
         return Err(anyhow!("could not parse Python version from filename"));
     };
 
     let is_debug = dist_filename.contains("-debug-");
-
-    let is_static = triple.contains("unknown-linux-musl");
+    let is_static = dist_filename.contains("+static");
 
     let mut tf = crate::open_distribution_archive(dist_path)?;
 
@@ -1984,7 +2019,7 @@ fn validate_distribution(
             } else if name == "_warnings" {
                 // But not on Python 3.13 on Windows
                 if triple.contains("-windows-") {
-                    matches!(python_major_minor, "3.8" | "3.9" | "3.10" | "3.11" | "3.12")
+                    matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12")
                 } else {
                     true
                 }
@@ -2005,29 +2040,6 @@ fn validate_distribution(
                     ext.init_fn,
                     name
                 ));
-            }
-        }
-    }
-
-    // On Apple Python 3.8 we need to ban most weak symbol references because 3.8 doesn't have
-    // the proper runtime guards in place to prevent them from being resolved at runtime,
-    // which would lead to a crash. See
-    // https://github.com/indygreg/python-build-standalone/pull/122.
-    if python_major_minor == "3.8" && *triple != "aarch64-apple-darwin" {
-        for (lib, symbols) in &context.macho_undefined_symbols_weak.libraries {
-            for (symbol, paths) in &symbols.symbols {
-                if MACHO_ALLOWED_WEAK_SYMBOLS_38_NON_AARCH64.contains(&symbol.as_str()) {
-                    continue;
-                }
-
-                for path in paths {
-                    context.errors.push(format!(
-                        "{} has weak symbol {}:{}, which is not allowed on Python 3.8",
-                        path.display(),
-                        lib,
-                        symbol
-                    ));
-                }
             }
         }
     }
@@ -2083,11 +2095,17 @@ fn verify_distribution_behavior(dist_path: &Path) -> Result<Vec<String>> {
     std::fs::write(&test_file, PYTHON_VERIFICATIONS.as_bytes())?;
 
     eprintln!("  running interpreter tests (output should follow)");
-    let output = duct::cmd(python_exe, [test_file.display().to_string()])
+    let output = duct::cmd(&python_exe, [test_file.display().to_string()])
         .stdout_to_stderr()
         .unchecked()
         .env("TARGET_TRIPLE", &python_json.target_triple)
-        .run()?;
+        .env("BUILD_OPTIONS", &python_json.build_options)
+        .run()
+        .context(format!(
+            "Failed to run `{} {}`",
+            python_exe.display(),
+            test_file.display()
+        ))?;
 
     if !output.status.success() {
         errors.push("errors running interpreter tests".to_string());
