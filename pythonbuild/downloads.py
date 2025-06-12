@@ -73,10 +73,10 @@ DOWNLOADS = {
         "python_tag": "cp312",
     },
     "cpython-3.13": {
-        "url": "https://www.python.org/ftp/python/3.13.4/Python-3.13.4.tar.xz",
-        "size": 22672472,
-        "sha256": "27b15a797562a2971dce3ffe31bb216042ce0b995b39d768cf15f784cc757365",
-        "version": "3.13.4",
+        "url": "https://www.python.org/ftp/python/3.13.5/Python-3.13.5.tar.xz",
+        "size": 22856016,
+        "sha256": "93e583f243454e6e9e4588ca2c2662206ad961659863277afcdb96801647d640",
+        "version": "3.13.5",
         "licenses": ["Python-2.0", "CNRI-Python"],
         "license_file": "LICENSE.cpython.txt",
         "python_tag": "cp313",
@@ -281,10 +281,10 @@ DOWNLOADS = {
         "license_file": "LICENSE.readline.txt",
     },
     "setuptools": {
-        "url": "https://files.pythonhosted.org/packages/55/21/47d163f615df1d30c094f6c8bbb353619274edccf0327b185cc2493c2c33/setuptools-75.6.0-py3-none-any.whl",
-        "size": 1224032,
-        "sha256": "ce74b49e8f7110f9bf04883b730f4765b774ef3ef28f722cce7c273d253aaf7d",
-        "version": "75.6.0",
+        "url": "https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl",
+        "size": 1201486,
+        "sha256": "062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922",
+        "version": "80.9.0",
     },
     # Remember to update verify_distribution.py when version changed.
     "sqlite": {
