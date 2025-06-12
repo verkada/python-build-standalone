@@ -17,7 +17,7 @@ jobs:
     if: ${{ needs.generate-matrix.outputs.pythonbuild_changed == 'true' || needs.generate-matrix.outputs.any_builds == 'true' || github.ref == 'refs/heads/main' }}
     needs:
       - generate-matrix
-    runs-on: depot-ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Install System Dependencies
         run: |
@@ -61,7 +61,7 @@ jobs:
           - build.cross-riscv64
           - gcc
     name: ${{ matrix.image }}
-    runs-on: depot-ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       packages: write
     steps:

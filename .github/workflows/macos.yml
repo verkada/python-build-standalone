@@ -17,7 +17,7 @@ jobs:
     if: ${{ needs.generate-matrix.outputs.pythonbuild_changed == 'true' || needs.generate-matrix.outputs.any_builds == 'true' || github.ref == 'refs/heads/main' }}
     needs:
       - generate-matrix
-    runs-on: depot-macos-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
