@@ -56,7 +56,7 @@ jobs:
           path: target/release/pythonbuild
 
   image:
-    if: ${{ needs.generate-matrix.outputs.any_builds == 'true' }}
+    if: ${{ needs.generate-matrix.outputs.pythonbuild_changed == 'true' || needs.generate-matrix.outputs.any_builds == 'true' || github.ref == 'refs/heads/main' }}
     needs:
       - generate-matrix
     strategy:

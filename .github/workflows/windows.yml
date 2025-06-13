@@ -1,9 +1,7 @@
 name: windows
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:  # Only run manually
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
