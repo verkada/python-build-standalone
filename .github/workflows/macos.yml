@@ -18,11 +18,7 @@ jobs:
   crate-build:
     needs:
       - generate-matrix
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.crate-build-matrix) }}
-      fail-fast: false
-    name: crate / ${{ matrix.arch }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
@@ -74,6 +70,28 @@ jobs:
           # Convert GitHub labels array to comma-separated string
           LABELS=$(echo "${PULL_REQUEST_LABELS}" | jq -r 'join(",")')
           echo "labels=$LABELS" >> $GITHUB_OUTPUT
+
+      - name: Generate build matrix
+        id: set-matrix
+        run: |
+          uv run ci-matrix.py \
+            --platform darwin \
+            --labels '${{ steps.get-labels.outputs.labels }}' \
+            --free-runners \
+            > matrix.json
+          
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+            
+          # Display the matrix for debugging too
+          cat matrix.json | jq
+
+          if jq -e '.include | length > 0' matrix.json > /dev/null; then
+            # Build matrix has entries
+            echo "any_builds=true" >> $GITHUB_OUTPUT
+          else
+            # Build matrix is empty
+            echo "any_builds=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check if the `pythonbuild` crate changed
         id: check-pythonbuild
