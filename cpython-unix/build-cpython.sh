@@ -44,7 +44,7 @@ sed "${sed_args[@]}" "s|/tools/host|${TOOLS_PATH}/host|g" ${TOOLS_PATH}/host/sha
 # We force linking of external static libraries by removing the shared
 # libraries. This is hacky. But we're building in a temporary container
 # and it gets the job done.
-find ${TOOLS_PATH}/deps -name '*.so*' -a \! \( -name 'libtcl*.so*' -or -name 'libtk*.so*' \) -exec rm {} \;
+find ${TOOLS_PATH}/deps -name '*.so*' ! -name 'libtcl*.so*' ! -name 'libtk*.so*' ! -name 'fips.so' -exec rm {} \;
 
 tar -xf Python-${PYTHON_VERSION}.tar.xz
 
@@ -1276,6 +1276,13 @@ fi
 # Copy the terminfo database if present.
 if [ -d "${TOOLS_PATH}/deps/usr/share/terminfo" ]; then
   cp -av ${TOOLS_PATH}/deps/usr/share/terminfo ${ROOT}/out/python/install/share/
+fi
+
+# Copy files required to enable FIPS if enabled.
+if [ -f ${TOOLS_PATH}/deps/fipsmodule.cnf ]; then
+    mkdir -p ${ROOT}/out/python/install/share/ssl
+    cp -rv ${TOOLS_PATH}/deps/lib/ossl-modules ${ROOT}/out/python/install/share/ssl
+    cp -av ${TOOLS_PATH}/deps/fipsmodule.cnf ${ROOT}/out/python/install/share/ssl
 fi
 
 # config.c defines _PyImport_Inittab and extern references to modules, which
