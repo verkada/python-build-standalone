@@ -1,9 +1,7 @@
 name: windows
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:  # Only run manually
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
@@ -18,11 +16,7 @@ jobs:
   crate-build:
     needs:
       - generate-matrix
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.crate-build-matrix) }}
-      fail-fast: false
-    name: crate / ${{ matrix.arch }}
+    runs-on: 'windows-latest'
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:

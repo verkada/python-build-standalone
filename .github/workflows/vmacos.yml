@@ -1,9 +1,9 @@
-name: macos
+name: vmacos
 
 on:
   push:
     branches: [main]
-  # pull_request:
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
@@ -15,16 +15,72 @@ env:
 permissions: {}
 
 jobs:
+  generate-matrix:
+    name: Generate build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      any_builds: ${{ steps.set-matrix.outputs.any_builds }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+
+      - name: Get pull request labels
+        id: get-labels
+        env:
+          PULL_REQUEST_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          # Convert GitHub labels array to comma-separated string
+          LABELS=$(echo "${PULL_REQUEST_LABELS}" | jq -r 'join(",")')
+          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+
+      - name: Generate build matrix
+        id: set-matrix
+        run: |
+          uv run ci-matrix.py \
+            --platform darwin \
+            --labels '${{ steps.get-labels.outputs.labels }}' \
+            --free-runners \
+            > matrix.json
+          
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+            
+          # Display the matrix for debugging too
+          cat matrix.json | jq
+
+          if jq -e '.include | length > 0' matrix.json > /dev/null; then
+            # Build matrix has entries
+            echo "any_builds=true" >> $GITHUB_OUTPUT
+          else
+            # Build matrix is empty
+            echo "any_builds=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if the `pythonbuild` crate changed
+        id: check-pythonbuild
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
+        run: |
+          merge_base=$(git merge-base HEAD "origin/${BASE_REF}")
+          if git diff --quiet "${merge_base}...HEAD" -- ':src/*.rs'; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   crate-build:
     needs:
       - generate-matrix
     runs-on: ${{ matrix.runner }}
     strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.crate-build-matrix) }}
-      fail-fast: false
-    name: crate / ${{ matrix.arch }}
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix).crate-build }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
 
@@ -50,65 +106,6 @@ jobs:
           name: ${{ matrix.crate_artifact_name }}
           path: target/release/pythonbuild
 
-  generate-matrix:
-    name: Generate build matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      crate-build-matrix: ${{ steps.set-matrix.outputs.crate-build-matrix }}
-      any_builds: ${{ steps.set-matrix.outputs.any_builds }}
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
-
-      - name: Get pull request labels
-        id: get-labels
-        env:
-          PULL_REQUEST_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
-        run: |
-          # Convert GitHub labels array to comma-separated string
-          LABELS=$(echo "${PULL_REQUEST_LABELS}" | jq -r 'join(",")')
-          echo "labels=$LABELS" >> $GITHUB_OUTPUT
-
-      - name: Check if the `pythonbuild` crate changed
-        id: check-pythonbuild
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
-        run: |
-          merge_base=$(git merge-base HEAD "origin/${BASE_REF}")
-          if git diff --quiet "${merge_base}...HEAD" -- ':src/*.rs'; then
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Generate build matrix
-        id: set-matrix
-        run: |
-          uv run ci-matrix.py --platform darwin --labels "${STEPS_GET_LABELS_OUTPUTS_LABELS}" ${{ (steps.check-pythonbuild.outputs.changed == 'true' || github.ref == 'refs/heads/main') && '--force-crate-build' || '' }} > matrix.json
-
-          # Extract python-build matrix
-          echo "matrix=$(jq -c '."python-build"' matrix.json)" >> $GITHUB_OUTPUT
-          echo "crate-build-matrix=$(jq -c '."crate-build"' matrix.json)" >> $GITHUB_OUTPUT
-
-          # Display the matrix for debugging too
-          cat matrix.json | jq
-
-          if jq -e '."python-build".include | length > 0' matrix.json > /dev/null; then
-            # Build matrix has entries
-            echo "any_builds=true" >> $GITHUB_OUTPUT
-          else
-            # Build matrix is empty
-            echo "any_builds=false" >> $GITHUB_OUTPUT
-          fi
-        env:
-          STEPS_GET_LABELS_OUTPUTS_LABELS: ${{ steps.get-labels.outputs.labels }}
-
   build:
     needs:
       - generate-matrix
@@ -119,11 +116,11 @@ jobs:
       attestations: write
     runs-on: ${{ matrix.runner }}
     strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix).python-build }}
       fail-fast: false
     name: ${{ matrix.target_triple }} / ${{ matrix.python }} / ${{ matrix.build_options }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -134,7 +131,7 @@ jobs:
           python-version: "3.11"
 
       - name: Download pythonbuild
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ matrix.crate_artifact_name }}
           path: build
@@ -142,14 +139,14 @@ jobs:
       - name: Build
         if: ${{ ! matrix.dry-run }}
         run: |
-          if [ "${MATRIX_TARGET_TRIPLE}" = "aarch64-apple-darwin" ]; then
-            export APPLE_SDK_PATH=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
-          elif [ "${MATRIX_TARGET_TRIPLE}" = "x86_64-apple-darwin" ]; then
-            export APPLE_SDK_PATH=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
-          else
-            echo "unhandled target triple: ${MATRIX_TARGET_TRIPLE}"
+          # Find the latest available macOS SDK
+          SDK_PATH=$(find /Applications/Xcode*.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs -name "MacOSX*.sdk" | sort -V | tail -1)
+          if [ -z "$SDK_PATH" ]; then
+            echo "No macOS SDK found"
             exit 1
           fi
+          echo "Using SDK: $SDK_PATH"
+          export APPLE_SDK_PATH="$SDK_PATH"
 
           ./build-macos.py --target-triple ${MATRIX_TARGET_TRIPLE} --python cpython-${MATRIX_PYTHON} --options ${MATRIX_BUILD_OPTIONS}
         env:
@@ -172,7 +169,7 @@ jobs:
 
       - name: Checkout macOS SDKs for validation
         if: ${{ ! matrix.dry-run }}
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           repository: phracker/MacOSX-SDKs
           ref: master
