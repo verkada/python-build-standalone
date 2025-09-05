@@ -106,13 +106,7 @@ pub static RELEASE_TRIPLES: Lazy<BTreeMap<&'static str, TripleRelease>> = Lazy::
 
     // Linux.
     let linux_suffixes_pgo = vec!["debug", "pgo+lto"];
-    let linux_suffixes_nopgo = vec!["debug", "lto", "noopt"];
     let linux_suffixes_pgo_freethreaded = vec!["freethreaded+debug", "freethreaded+pgo+lto"];
-    let linux_suffixes_nopgo_freethreaded = vec![
-        "freethreaded+debug",
-        "freethreaded+lto",
-        "freethreaded+noopt",
-    ];
 
     h.insert(
         "aarch64-unknown-linux-gnu",
