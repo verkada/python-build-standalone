@@ -193,9 +193,6 @@ jobs:
               echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-        env:
-          STEPS_GET_LABELS_OUTPUTS_LABELS: ${{ steps.get-labels.outputs.labels }}
-
   build-0:
     needs:
       - generate-matrix
