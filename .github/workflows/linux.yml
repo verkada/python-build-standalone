@@ -138,7 +138,7 @@ jobs:
     name: Generate build matrix
     runs-on: ubuntu-latest
     outputs:
-      matrix-0: ${{ steps.set-matrix.outputs.matrix-0 }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
       any_builds: ${{ steps.set-matrix.outputs.any_builds }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
@@ -168,7 +168,7 @@ jobs:
             > matrix.json
 
 
-          echo "matrix-0=$(cat matrix.json)" >> $GITHUB_OUTPUT
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
 
           # Display the matrix for debugging too
           cat matrix.json | jq
@@ -193,7 +193,7 @@ jobs:
               echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-  build-0:
+  build:
     needs:
       - generate-matrix
       - crate-build
