@@ -76,7 +76,9 @@ jobs:
   crate-build:
     needs:
       - generate-matrix
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix).crate-build }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
@@ -101,7 +103,7 @@ jobs:
       - name: Upload pythonbuild Executable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: pythonbuild
+          name: ${{ matrix.crate_artifact_name }}
           path: target/release/pythonbuild
 
   build:
@@ -114,7 +116,7 @@ jobs:
       attestations: write
     runs-on: ${{ matrix.runner }}
     strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix).python-build }}
       fail-fast: false
     name: ${{ matrix.target_triple }} / ${{ matrix.python }} / ${{ matrix.build_options }}
     steps:
@@ -131,7 +133,7 @@ jobs:
       - name: Download pythonbuild
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: pythonbuild
+          name: ${{ matrix.crate_artifact_name }}
           path: build
 
       - name: Build
