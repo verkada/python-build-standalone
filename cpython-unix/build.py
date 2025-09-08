@@ -286,7 +286,7 @@ def simple_build(
         
         # Debug: Check what files exist in the build environment
         try:
-            files = build_env.find_output_files(".", "*")
+            files = list(build_env.find_output_files(".", "*"))
             print(f"Files in build environment: {len(files)} files found")
             for f in sorted(files)[:10]:  # Show first 10 files
                 print(f"  {f}")
@@ -297,7 +297,7 @@ def simple_build(
         
         # Debug: Check if tools_path directory exists
         try:
-            tools_files = build_env.find_output_files(tools_path, "*")
+            tools_files = list(build_env.find_output_files(tools_path, "*"))
             print(f"Files in {tools_path} directory: {len(tools_files)} files found")
             for f in sorted(tools_files)[:5]:  # Show first 5 files
                 print(f"  {tools_path}/{f}")
@@ -1309,7 +1309,19 @@ def main():
         else:
             print("unknown build action: %s" % action)
             return 1
+        
+        print(f"Build action '{action}' completed successfully for {target_triple}")
+        return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        exit_code = main()
+        print(f"Main function completed with exit code: {exit_code}")
+        sys.exit(exit_code)
+    except Exception as e:
+        print(f"Unhandled exception in main: {e}")
+        print(f"Exception type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(2)
