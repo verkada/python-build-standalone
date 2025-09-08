@@ -281,8 +281,40 @@ def simple_build(
 
         build_env.run("build-%s.sh" % entry, environment=env)
 
-        print(f"here at simple_build")
-        build_env.get_tools_archive(dest_archive, tools_path)
+        print(f"here at simple_build for {entry}")
+        print(f"tools_path: {tools_path}, dest_archive: {dest_archive}")
+        
+        # Debug: Check what files exist in the build environment
+        try:
+            files = build_env.find_output_files(".", "*")
+            print(f"Files in build environment: {len(files)} files found")
+            for f in sorted(files)[:10]:  # Show first 10 files
+                print(f"  {f}")
+            if len(files) > 10:
+                print(f"  ... and {len(files) - 10} more files")
+        except Exception as e:
+            print(f"Error listing files in build environment: {e}")
+        
+        # Debug: Check if tools_path directory exists
+        try:
+            tools_files = build_env.find_output_files(tools_path, "*")
+            print(f"Files in {tools_path} directory: {len(tools_files)} files found")
+            for f in sorted(tools_files)[:5]:  # Show first 5 files
+                print(f"  {tools_path}/{f}")
+        except Exception as e:
+            print(f"Error listing files in {tools_path} directory: {e}")
+            
+        try:
+            build_env.get_tools_archive(dest_archive, tools_path)
+            print(f"Successfully created archive at {dest_archive}")
+        except Exception as e:
+            print(f"Error in get_tools_archive: {e}")
+            print(f"Exception type: {type(e)}")
+            if hasattr(e, 'output'):
+                print(f"Command output: {e.output}")
+            if hasattr(e, 'stderr'):
+                print(f"Command stderr: {e.stderr}")
+            raise
 
 
 def build_binutils(client, image, host_platform):
