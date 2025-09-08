@@ -108,15 +108,20 @@ pub static RELEASE_TRIPLES: Lazy<BTreeMap<&'static str, TripleRelease>> = Lazy::
     let linux_suffixes_pgo = vec!["debug", "pgo+lto"];
     let linux_suffixes_pgo_freethreaded = vec!["freethreaded+debug", "freethreaded+pgo+lto"];
 
+
     h.insert(
         "aarch64-unknown-linux-gnu",
         TripleRelease {
-            suffixes: vec!["lto"],
-            install_only_suffix: "lto",
+            suffixes: linux_suffixes_pgo.clone(),
+            install_only_suffix: "pgo+lto",
             python_version_requirement: None,
-            conditional_suffixes: vec![],
+            conditional_suffixes: vec![ConditionalSuffixes {
+                python_version_requirement: VersionSpecifier::from_str(">=3.13").unwrap(),
+                suffixes: linux_suffixes_pgo_freethreaded.clone(),
+            }],
         },
     );
+
 
 
     h.insert(

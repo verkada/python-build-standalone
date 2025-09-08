@@ -35,7 +35,7 @@ linux:
       - "3.13"
       - "3.14"
     build_options:
-      - lto
+      - pgo+lto
 
 
   x86_64-unknown-linux-gnu:
