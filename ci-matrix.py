@@ -217,7 +217,7 @@ def find_runner(runners: dict[str, Any], platform: str, arch: str, free: bool) -
     match_platform = [
         runner
         for runner in runners
-        if runners[runner]["platform"] == platform and runners[runner]["free"] == free
+        if runners[runner]["platform"] == platform
     ]
 
     # Then, find a matching architecture

@@ -1,4 +1,5 @@
 # Describes the targets that the CI system will build and test on.
+# Simplified to build only install_only targets
 
 darwin:
   aarch64-apple-darwin:
@@ -10,13 +11,7 @@ darwin:
       - "3.13"
       - "3.14"
     build_options:
-      - debug
       - pgo+lto
-    build_options_conditional:
-      - options:
-          - freethreaded+debug
-          - freethreaded+pgo+lto
-        minimum-python-version: "3.13"
 
   x86_64-apple-darwin:
     arch: x86_64
@@ -27,13 +22,7 @@ darwin:
       - "3.13"
       - "3.14"
     build_options:
-      - debug
       - pgo+lto
-    build_options_conditional:
-      - options:
-          - freethreaded+debug
-          - freethreaded+pgo+lto
-        minimum-python-version: "3.13"
 
 linux:
   aarch64-unknown-linux-gnu:
@@ -46,15 +35,8 @@ linux:
       - "3.13"
       - "3.14"
     build_options:
-      - debug
-      - noopt
-      - lto
-    build_options_conditional:
-      - options:
-          - freethreaded+debug
-          - freethreaded+noopt
-          - freethreaded+lto
-        minimum-python-version: "3.13"
+      - pgo+lto
+
 
   x86_64-unknown-linux-gnu:
     arch: x86_64
@@ -66,11 +48,5 @@ linux:
       - "3.13"
       - "3.14"
     build_options:
-      - debug
       - pgo+lto
-    build_options_conditional:
-      - options:
-          - freethreaded+debug
-          - freethreaded+pgo+lto
-        minimum-python-version: "3.13"
     run: true
