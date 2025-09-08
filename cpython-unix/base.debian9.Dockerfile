@@ -1,5 +1,5 @@
-# Debian Jessie.
-FROM debian@sha256:32ad5050caffb2c7e969dac873bce2c370015c2256ff984b70c1c08b3a2816a0
+# Debian Stretch.
+FROM debian@sha256:c5c5200ff1e9c73ffbf188b4a67eb1c91531b644856b4aefe86a58d2f0cb05be
 LABEL org.opencontainers.image.authors="Gregory Szorc <gregory.szorc@gmail.com>"
 
 RUN groupadd -g 1000 build && \
@@ -17,10 +17,8 @@ ENV HOME=/build \
 CMD ["/bin/bash", "--login"]
 WORKDIR '/build'
 
-# Jessie's signing keys expired in late 2022. So need to add [trusted=yes] to force trust.
-# Jessie stopped publishing snapshots in March 2023.
-RUN for s in debian_jessie debian_jessie-updates debian-security_jessie/updates; do \
-      echo "deb [trusted=yes] http://snapshot.debian.org/archive/${s%_*}/20230322T152120Z/ ${s#*_} main"; \
+RUN for s in debian_stretch debian_stretch-updates debian-security_stretch/updates; do \
+      echo "deb http://snapshot.debian.org/archive/${s%_*}/20230423T032736Z/ ${s#*_} main"; \
     done > /etc/apt/sources.list && \
     ( echo 'quiet "true";'; \
       echo 'APT::Get::Assume-Yes "true";'; \

@@ -108,6 +108,7 @@ aarch64-apple-darwin:
     - tk
     - uuid
     - xz
+    - zstd
   openssl_target: darwin64-arm64-cc
 
 aarch64-apple-ios:
@@ -151,11 +152,13 @@ aarch64-apple-ios:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: ios64-cross
 
 aarch64-unknown-linux-gnu:
   host_platforms:
     - linux_x86_64
+    - linux_aarch64
   pythons_supported:
     - '3.9'
     - '3.10'
@@ -163,11 +166,16 @@ aarch64-unknown-linux-gnu:
     - '3.12'
     - '3.13'
     - '3.14'
-  docker_image_suffix: .cross
-  host_cc: /usr/bin/x86_64-linux-gnu-gcc
-  host_cxx: /usr/bin/x86_64-linux-gnu-g++
-  target_cc: /usr/bin/aarch64-linux-gnu-gcc
-  target_cxx: /usr/bin/aarch64-linux-gnu-g++
+  docker_image_suffix: .debian9
+  needs_toolchain: true
+  host_cc: clang
+  host_cxx: clang++
+  target_cc: clang
+  target_cxx: clang++
+  target_cflags:
+    - '-fvisibility=hidden'
+    # Needed to prevent BOLT from crashing.
+    - '-fdebug-default-version=4'
   needs:
     - autoconf
     - bdb
@@ -187,12 +195,17 @@ aarch64-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-aarch64
+  # Blocked on:
+  #   BOLT-ERROR: Cannot relax adr in non-simple function
+  #   trampoline_code_table/1. Use --strict option to override
+  # See https://github.com/llvm/llvm-project/issues/146541
+  # bolt_capable: true
 
 arm64-apple-tvos:
   host_platforms:
@@ -234,6 +247,7 @@ arm64-apple-tvos:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: todo
 
 armv7-unknown-linux-gnueabi:
@@ -270,11 +284,11 @@ armv7-unknown-linux-gnueabi:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-armv4
 
 armv7-unknown-linux-gnueabihf:
@@ -311,12 +325,53 @@ armv7-unknown-linux-gnueabihf:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-armv4
+
+loongarch64-unknown-linux-gnu:
+  host_platforms:
+    - linux_x86_64
+  pythons_supported:
+    - '3.9'
+    - '3.10'
+    - '3.11'
+    - '3.12'
+    - '3.13'
+    - '3.14'
+  docker_image_suffix: .cross-loongarch64
+  host_cc: /usr/bin/x86_64-linux-gnu-gcc
+  host_cxx: /usr/bin/x86_64-linux-gnu-g++
+  target_cc: /usr/bin/loongarch64-linux-gnu-gcc
+  target_cxx: /usr/bin/loongarch64-linux-gnu-g++
+  needs:
+    - autoconf
+    - bdb
+    - binutils
+    - bzip2
+    - expat
+    - libedit
+    - libffi
+    - libX11
+    - libXau
+    - libxcb
+    - m4
+    - mpdecimal
+    - ncurses
+    - openssl-3.0
+    - patchelf
+    - sqlite
+    - tcl
+    - tk
+    - uuid
+    - xorgproto
+    - xz
+    - zlib
+    - zstd
+  openssl_target: linux64-loongarch64
 
 mips-unknown-linux-gnu:
   host_platforms:
@@ -352,11 +407,11 @@ mips-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-mips32
 
 mipsel-unknown-linux-gnu:
@@ -393,11 +448,11 @@ mipsel-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-mips32
 
 ppc64le-unknown-linux-gnu:
@@ -434,11 +489,11 @@ ppc64le-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-ppc64le
 
 riscv64-unknown-linux-gnu:
@@ -475,11 +530,11 @@ riscv64-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux64-riscv64
 
 s390x-unknown-linux-gnu:
@@ -516,11 +571,11 @@ s390x-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux64-s390x
 
 thumb7k-apple-watchos:
@@ -563,6 +618,7 @@ thumb7k-apple-watchos:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: todo
 
 # Intel macOS.
@@ -618,6 +674,7 @@ x86_64-apple-darwin:
     - tk
     - uuid
     - xz
+    - zstd
   openssl_target: darwin64-x86_64-cc
 
 x86_64-apple-ios:
@@ -661,6 +718,7 @@ x86_64-apple-ios:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: darwin64-x86_64-cc
 
 x86_64-apple-tvos:
@@ -703,6 +761,7 @@ x86_64-apple-tvos:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: todo
 
 x86_64-apple-watchos:
@@ -745,6 +804,7 @@ x86_64-apple-watchos:
     - openssl-3.0
     - sqlite
     - xz
+    - zstd
   openssl_target: todo
 
 x86_64-unknown-linux-gnu:
@@ -785,11 +845,11 @@ x86_64-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
   bolt_capable: true
 
@@ -832,11 +892,11 @@ x86_64_v2-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
   bolt_capable: true
 
@@ -879,11 +939,11 @@ x86_64_v3-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
   bolt_capable: true
 
@@ -926,11 +986,11 @@ x86_64_v4-unknown-linux-gnu:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
   bolt_capable: true
 
@@ -971,11 +1031,11 @@ x86_64-unknown-linux-musl:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
 
 x86_64_v2-unknown-linux-musl:
@@ -1016,11 +1076,11 @@ x86_64_v2-unknown-linux-musl:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
 
 x86_64_v3-unknown-linux-musl:
@@ -1061,11 +1121,11 @@ x86_64_v3-unknown-linux-musl:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
 
 x86_64_v4-unknown-linux-musl:
@@ -1106,9 +1166,56 @@ x86_64_v4-unknown-linux-musl:
     - sqlite
     - tcl
     - tk
-    - tix
     - uuid
     - xorgproto
     - xz
     - zlib
+    - zstd
   openssl_target: linux-x86_64
+
+aarch64-unknown-linux-musl:
+  host_platforms:
+    - linux_x86_64
+    - linux_aarch64
+  pythons_supported:
+    - '3.9'
+    - '3.10'
+    - '3.11'
+    - '3.12'
+    - '3.13'
+    - '3.14'
+  needs_toolchain: true
+  docker_image_suffix: .debian9
+  needs_toolchain: true
+  host_cc: clang
+  host_cxx: clang++
+  target_cc: musl-clang
+  target_cxx: clang++
+  target_cflags:
+    - '-fvisibility=hidden'
+  needs:
+    - autoconf
+    - bdb
+    - binutils
+    - bzip2
+    - expat
+    - libedit
+    - libffi-3.3
+    - libX11
+    - libXau
+    - libxcb
+    - m4
+    - mpdecimal
+    - musl
+    - ncurses
+    - openssl-3.0
+    - patchelf
+    - sqlite
+    - tcl
+    - tk
+    - uuid
+    - xorgproto
+    - xz
+    - zlib
+    - zstd
+  openssl_target: linux-aarch64

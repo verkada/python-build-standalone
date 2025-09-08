@@ -4,21 +4,21 @@
 
 use {
     crate::{json::*, macho::*},
-    anyhow::{anyhow, Context, Result},
+    anyhow::{Context, Result, anyhow},
     clap::ArgMatches,
     normalize_path::NormalizePath,
     object::{
+        Architecture, Endianness, FileKind, Object, SectionIndex, SymbolScope,
         elf::{
-            FileHeader32, FileHeader64, ET_DYN, ET_EXEC, STB_GLOBAL, STB_WEAK, STV_DEFAULT,
-            STV_HIDDEN,
+            ET_DYN, ET_EXEC, FileHeader32, FileHeader64, SHN_UNDEF, STB_GLOBAL, STB_WEAK,
+            STV_DEFAULT, STV_HIDDEN,
         },
-        macho::{MachHeader32, MachHeader64, MH_OBJECT, MH_TWOLEVEL},
+        macho::{LC_CODE_SIGNATURE, MH_OBJECT, MH_TWOLEVEL, MachHeader32, MachHeader64},
         read::{
             elf::{Dyn, FileHeader, SectionHeader, Sym},
-            macho::{LoadCommandVariant, MachHeader, Nlist},
+            macho::{LoadCommandVariant, MachHeader, Nlist, Section, Segment},
             pe::{ImageNtHeaders, PeFile, PeFile32, PeFile64},
         },
-        Endianness, FileKind, Object, SectionIndex, SymbolScope,
     },
     once_cell::sync::Lazy,
     std::{
@@ -33,7 +33,9 @@ use {
 const RECOGNIZED_TRIPLES: &[&str] = &[
     "aarch64-apple-darwin",
     "aarch64-apple-ios",
+    "aarch64-pc-windows-msvc",
     "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
     "armv7-unknown-linux-gnueabi",
     "armv7-unknown-linux-gnueabihf",
     "arm64-apple-tvos",
@@ -117,11 +119,13 @@ const PE_ALLOWED_LIBRARIES: &[&str] = &[
     "libcrypto-1_1.dll",
     "libcrypto-1_1-x64.dll",
     "libcrypto-3.dll",
+    "libcrypto-3-arm64.dll",
     "libcrypto-3-x64.dll",
     "libffi-8.dll",
     "libssl-1_1.dll",
     "libssl-1_1-x64.dll",
     "libssl-3.dll",
+    "libssl-3-arm64.dll",
     "libssl-3-x64.dll",
     "python3.dll",
     "python39.dll",
@@ -137,8 +141,14 @@ const PE_ALLOWED_LIBRARIES: &[&str] = &[
     "tk86t.dll",
 ];
 
-// CPython 3.14 uses tcl/tk 8.6.14+ which includes a bundled zlib and dynamically links to msvcrt.
-const PE_ALLOWED_LIBRARIES_314: &[&str] = &["msvcrt.dll", "zlib1.dll"];
+// CPython 3.14 and ARM64 use a newer version of tcl/tk (8.6.14+) which includes a bundled zlib that
+// dynamically links some system libraries
+const PE_ALLOWED_LIBRARIES_314: &[&str] = &[
+    "zlib1.dll",
+    "api-ms-win-crt-private-l1-1-0.dll", // zlib loads this library on arm64, 3.14+
+    "msvcrt.dll",                        // zlib loads this library
+];
+const PE_ALLOWED_LIBRARIES_ARM64: &[&str] = &["msvcrt.dll", "zlib1.dll"];
 
 static GLIBC_MAX_VERSION_BY_TRIPLE: Lazy<HashMap<&'static str, version_compare::Version<'static>>> =
     Lazy::new(|| {
@@ -203,6 +213,10 @@ static GLIBC_MAX_VERSION_BY_TRIPLE: Lazy<HashMap<&'static str, version_compare::
 
         // musl shouldn't link against glibc.
         versions.insert(
+            "aarch64-unknown-linux-musl",
+            version_compare::Version::from("1").unwrap(),
+        );
+        versions.insert(
             "x86_64-unknown-linux-musl",
             version_compare::Version::from("1").unwrap(),
         );
@@ -250,6 +264,25 @@ static ELF_ALLOWED_LIBRARIES_BY_TRIPLE: Lazy<HashMap<&'static str, Vec<&'static 
             ("x86_64_v2-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
             ("x86_64_v3-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
             ("x86_64_v4-unknown-linux-gnu", vec!["ld-linux-x86-64.so.2"]),
+        ]
+        .iter()
+        .cloned()
+        .collect()
+    });
+
+static ELF_ALLOWED_LIBRARIES_BY_MODULE: Lazy<HashMap<&'static str, Vec<&'static str>>> =
+    Lazy::new(|| {
+        [
+            (
+                // libcrypt is provided by the system, but only on older distros.
+                "_crypt",
+                vec!["libcrypt.so.1"],
+            ),
+            (
+                // libtcl and libtk are shipped in our distribution.
+                "_tkinter",
+                vec!["libtcl8.6.so", "libtk8.6.so"],
+            ),
         ]
         .iter()
         .cloned()
@@ -492,11 +525,36 @@ static IOS_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
     .to_vec()
 });
 
+static ALLOWED_DYLIBS_BY_MODULE: Lazy<HashMap<&'static str, Vec<MachOAllowedDylib>>> =
+    Lazy::new(|| {
+        [(
+            // libtcl and libtk are shipped in our distribution.
+            "_tkinter",
+            vec![
+                MachOAllowedDylib {
+                    name: "@rpath/libtcl8.6.dylib".to_string(),
+                    max_compatibility_version: "8.6.0".try_into().unwrap(),
+                    required: true,
+                },
+                MachOAllowedDylib {
+                    name: "@rpath/libtk8.6.dylib".to_string(),
+                    max_compatibility_version: "8.6.0".try_into().unwrap(),
+                    required: true,
+                },
+            ],
+        )]
+        .iter()
+        .cloned()
+        .collect()
+    });
+
 static PLATFORM_TAG_BY_TRIPLE: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     [
         ("aarch64-apple-darwin", "macosx-11.0-arm64"),
         ("aarch64-apple-ios", "iOS-aarch64"),
+        ("aarch64-pc-windows-msvc", "win-arm64"),
         ("aarch64-unknown-linux-gnu", "linux-aarch64"),
+        ("aarch64-unknown-linux-musl", "linux-aarch64"),
         ("armv7-unknown-linux-gnueabi", "linux-arm"),
         ("armv7-unknown-linux-gnueabihf", "linux-arm"),
         ("i686-pc-windows-msvc", "win32"),
@@ -534,9 +592,12 @@ const ELF_BANNED_SYMBOLS: &[&str] = &[
 /// We use this list to spot test behavior of symbols belonging to dependency packages.
 /// The list is obviously not complete.
 const DEPENDENCY_PACKAGE_SYMBOLS: &[&str] = &[
-    // libX11
-    "XClearWindow",
-    "XFlush",
+    /* TODO(geofft): Tk provides these as no-op stubs on macOS, make it
+     * stop doing that so we can re-enable the check
+     * // libX11
+     * "XClearWindow",
+     * "XFlush",
+     */
     // OpenSSL
     "BIO_ADDR_new",
     "BN_new",
@@ -581,6 +642,11 @@ const DEPENDENCY_PACKAGE_SYMBOLS: &[&str] = &[
     // liblzma
     "lzma_index_init",
     "lzma_stream_encoder",
+];
+
+// TODO(geofft): Conditionally prohibit these exported symbols
+// everywhere except libtcl and libtk. This should be a hashmap
+const _DEPENDENCY_PACKAGE_SYMBOLS_BUNDLED: &[&str] = &[
     // tcl
     "Tcl_Alloc",
     "Tcl_ChannelName",
@@ -589,6 +655,10 @@ const DEPENDENCY_PACKAGE_SYMBOLS: &[&str] = &[
     "TkBindInit",
     "TkCreateFrame",
     "Tk_FreeGC",
+    // _ctypes_test module
+    "my_free",
+    "mystrdup",
+    "top",
 ];
 
 const PYTHON_EXPORTED_SYMBOLS: &[&str] = &[
@@ -768,6 +838,7 @@ const GLOBAL_EXTENSIONS_PYTHON_3_14: &[&str] = &[
     "_zoneinfo",
     "_hmac",
     "_types",
+    "_zstd",
 ];
 
 const GLOBAL_EXTENSIONS_MACOS: &[&str] = &["_scproxy"];
@@ -803,8 +874,7 @@ const GLOBAL_EXTENSIONS_WINDOWS: &[&str] = &[
     "winsound",
 ];
 
-// TODO(zanieb): Move `_zstd` to non-Windows specific once we add support on Unix.
-const GLOBAL_EXTENSIONS_WINDOWS_3_14: &[&str] = &["_wmi", "_zstd"];
+const GLOBAL_EXTENSIONS_WINDOWS_3_14: &[&str] = &["_wmi"];
 
 const GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13: &[&str] = &["_msi"];
 
@@ -812,7 +882,7 @@ const GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13: &[&str] = &["_msi"];
 const GLOBAL_EXTENSIONS_WINDOWS_NO_STATIC: &[&str] = &["_testinternalcapi", "_tkinter"];
 
 /// Extension modules that should be built as shared libraries.
-const SHARED_LIBRARY_EXTENSIONS: &[&str] = &["_crypt"];
+const SHARED_LIBRARY_EXTENSIONS: &[&str] = &["_crypt", "_ctypes_test", "_tkinter"];
 
 const PYTHON_VERIFICATIONS: &str = include_str!("verify_distribution.py");
 
@@ -885,6 +955,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
 
     let wanted_cpu_type = match target_triple {
         "aarch64-unknown-linux-gnu" => object::elf::EM_AARCH64,
+        "aarch64-unknown-linux-musl" => object::elf::EM_AARCH64,
         "armv7-unknown-linux-gnueabi" => object::elf::EM_ARM,
         "armv7-unknown-linux-gnueabihf" => object::elf::EM_ARM,
         "i686-unknown-linux-gnu" => object::elf::EM_386,
@@ -902,7 +973,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
         "x86_64_v2-unknown-linux-musl" => object::elf::EM_X86_64,
         "x86_64_v3-unknown-linux-musl" => object::elf::EM_X86_64,
         "x86_64_v4-unknown-linux-musl" => object::elf::EM_X86_64,
-        _ => panic!("unhandled target triple: {}", target_triple),
+        _ => panic!("unhandled target triple: {target_triple}"),
     };
 
     let endian = elf.endian()?;
@@ -927,27 +998,23 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
     if json.libpython_link_mode == "shared" {
         if target_triple.contains("-musl") {
             // On musl, we link to `libpython` and rely on `RUN PATH`
-            allowed_libraries.push(format!("libpython{}.so.1.0", python_major_minor));
-            allowed_libraries.push(format!("libpython{}d.so.1.0", python_major_minor));
-            allowed_libraries.push(format!("libpython{}t.so.1.0", python_major_minor));
-            allowed_libraries.push(format!("libpython{}td.so.1.0", python_major_minor));
+            allowed_libraries.push(format!("libpython{python_major_minor}.so.1.0"));
+            allowed_libraries.push(format!("libpython{python_major_minor}d.so.1.0"));
+            allowed_libraries.push(format!("libpython{python_major_minor}t.so.1.0"));
+            allowed_libraries.push(format!("libpython{python_major_minor}td.so.1.0"));
         } else {
             // On glibc, we can use `$ORIGIN` for relative, reloctable linking
             allowed_libraries.push(format!(
-                "$ORIGIN/../lib/libpython{}.so.1.0",
-                python_major_minor
+                "$ORIGIN/../lib/libpython{python_major_minor}.so.1.0"
             ));
             allowed_libraries.push(format!(
-                "$ORIGIN/../lib/libpython{}d.so.1.0",
-                python_major_minor
+                "$ORIGIN/../lib/libpython{python_major_minor}d.so.1.0"
             ));
             allowed_libraries.push(format!(
-                "$ORIGIN/../lib/libpython{}t.so.1.0",
-                python_major_minor
+                "$ORIGIN/../lib/libpython{python_major_minor}t.so.1.0"
             ));
             allowed_libraries.push(format!(
-                "$ORIGIN/../lib/libpython{}td.so.1.0",
-                python_major_minor
+                "$ORIGIN/../lib/libpython{python_major_minor}td.so.1.0"
             ));
         }
     }
@@ -957,11 +1024,13 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
         allowed_libraries.push("libc.so".to_string());
     }
 
-    // Allow the _crypt extension module - and only it - to link against libcrypt,
-    // which is no longer universally present in Linux distros.
+    // Allow certain extension modules to link against shared libraries
+    // (either from the system or from our distribution).
     if let Some(filename) = path.file_name() {
-        if filename.to_string_lossy().starts_with("_crypt") {
-            allowed_libraries.push("libcrypt.so.1".to_string());
+        if let Some((module, _)) = filename.to_string_lossy().split_once(".cpython-") {
+            if let Some(extra) = ELF_ALLOWED_LIBRARIES_BY_MODULE.get(module) {
+                allowed_libraries.extend(extra.iter().map(|x| x.to_string()));
+            }
         }
     }
 
@@ -1041,7 +1110,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
         {
             let strings = symbols.strings();
 
-            for (symbol_index, symbol) in symbols.iter().enumerate() {
+            for (symbol_index, symbol) in symbols.enumerate() {
                 let name = String::from_utf8_lossy(symbol.name(endian, strings)?);
 
                 // If symbol versions are defined and we're in the .dynsym section, there should
@@ -1099,6 +1168,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
                     // to prevent them from being exported.
                     if DEPENDENCY_PACKAGE_SYMBOLS.contains(&name.as_ref())
                         && matches!(symbol.st_bind(), STB_GLOBAL | STB_WEAK)
+                        && symbol.st_shndx(endian) != SHN_UNDEF
                         && symbol.st_visibility() != STV_HIDDEN
                     {
                         context.errors.push(format!(
@@ -1114,6 +1184,7 @@ fn validate_elf<Elf: FileHeader<Endian = Endianness>>(
                         if filename.starts_with("libpython")
                             && filename.ends_with(".so.1.0")
                             && matches!(symbol.st_bind(), STB_GLOBAL | STB_WEAK)
+                            && symbol.st_shndx(endian) != SHN_UNDEF
                             && symbol.st_visibility() == STV_DEFAULT
                         {
                             context.libpython_exported_symbols.insert(name.to_string());
@@ -1154,8 +1225,8 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
     bytes: &[u8],
 ) -> Result<()> {
     let advertised_target_version =
-        semver::Version::parse(&format!("{}.0", advertised_target_version))?;
-    let advertised_sdk_version = semver::Version::parse(&format!("{}.0", advertised_sdk_version))?;
+        semver::Version::parse(&format!("{advertised_target_version}.0"))?;
+    let advertised_sdk_version = semver::Version::parse(&format!("{advertised_sdk_version}.0"))?;
 
     let endian = header.endian()?;
 
@@ -1189,6 +1260,8 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
     let mut undefined_symbols = vec![];
     let mut target_version = None;
     let mut sdk_version = None;
+    let mut has_code_signature = false;
+    let mut lowest_file_offset = u64::MAX;
 
     while let Some(load_command) = load_commands.next()? {
         match load_command.variant()? {
@@ -1215,7 +1288,16 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
 
                 dylib_names.push(lib.clone());
 
-                let allowed = allowed_dylibs_for_triple(target_triple);
+                let mut allowed = allowed_dylibs_for_triple(target_triple);
+                // Allow certain extension modules to link against shared libraries
+                // (either from the system or from our distribution).
+                if let Some(filename) = path.file_name() {
+                    if let Some((module, _)) = filename.to_string_lossy().split_once(".cpython-") {
+                        if let Some(extra) = ALLOWED_DYLIBS_BY_MODULE.get(module) {
+                            allowed.extend(extra.clone());
+                        }
+                    }
+                }
 
                 if let Some(entry) = allowed.iter().find(|l| l.name == lib) {
                     let load_version =
@@ -1302,8 +1384,36 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
                     }
                 }
             }
+            LoadCommandVariant::Segment32(segment, segment_data) => {
+                for section in segment.sections(endian, segment_data)? {
+                    if let Some((offset, _)) = section.file_range(endian) {
+                        lowest_file_offset = lowest_file_offset.min(offset);
+                    }
+                }
+            }
+            LoadCommandVariant::Segment64(segment, segment_data) => {
+                for section in segment.sections(endian, segment_data)? {
+                    if let Some((offset, _)) = section.file_range(endian) {
+                        lowest_file_offset = lowest_file_offset.min(offset);
+                    }
+                }
+            }
+            LoadCommandVariant::LinkeditData(c) if c.cmd.get(endian) == LC_CODE_SIGNATURE => {
+                has_code_signature = true;
+            }
             _ => {}
         }
+    }
+
+    let end_of_load_commands =
+        std::mem::size_of_val(header) as u64 + header.sizeofcmds(endian) as u64;
+    if header.filetype(endian) != MH_OBJECT
+        && end_of_load_commands + if has_code_signature { 0 } else { 16 } > lowest_file_offset
+    {
+        context.errors.push(format!(
+            "{}: Insufficient headerpad between end of load commands {end_of_load_commands:#x} and beginning of code {lowest_file_offset:#x}",
+            path.display(),
+        ));
     }
 
     if let Some(actual_target_version) = target_version {
@@ -1375,15 +1485,17 @@ fn validate_pe<'data, Pe: ImageNtHeaders>(
             let lib = String::from_utf8(lib.to_vec())?;
 
             match python_major_minor {
-                "3.9" | "3.10" | "3.11" | "3.12" | "3.13" => {}
+                "3.11" | "3.12" | "3.13" if pe.architecture() == Architecture::Aarch64 => {
+                    if PE_ALLOWED_LIBRARIES_ARM64.contains(&lib.as_str()) {
+                        continue;
+                    }
+                }
                 "3.14" => {
                     if PE_ALLOWED_LIBRARIES_314.contains(&lib.as_str()) {
                         continue;
                     }
                 }
-                _ => {
-                    panic!("unhandled Python version: {}", python_major_minor);
-                }
+                _ => {}
             }
 
             if !PE_ALLOWED_LIBRARIES.contains(&lib.as_str()) {
@@ -1545,7 +1657,7 @@ fn validate_extension_modules(
             wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_14);
         }
         _ => {
-            panic!("unhandled Python version: {}", python_major_minor);
+            panic!("unhandled Python version: {python_major_minor}");
         }
     }
 
@@ -1616,11 +1728,11 @@ fn validate_extension_modules(
     }
 
     for extra in have_extensions.difference(&wanted) {
-        errors.push(format!("extra/unknown extension module: {}", extra));
+        errors.push(format!("extra/unknown extension module: {extra}"));
     }
 
     for missing in wanted.difference(have_extensions) {
-        errors.push(format!("missing extension module: {}", missing));
+        errors.push(format!("missing extension module: {missing}"));
     }
 
     Ok(errors)
@@ -1675,7 +1787,7 @@ fn validate_json(json: &PythonJsonMain, triple: &str, is_debug: bool) -> Result<
 
     for extension in json.build_info.extensions.keys() {
         if GLOBALLY_BANNED_EXTENSIONS.contains(&extension.as_str()) {
-            errors.push(format!("banned extension detected: {}", extension));
+            errors.push(format!("banned extension detected: {extension}"));
         }
     }
 
@@ -1712,11 +1824,7 @@ fn validate_distribution(
 
     let triple = RECOGNIZED_TRIPLES
         .iter()
-        .find(|triple| {
-            dist_path
-                .to_string_lossy()
-                .contains(&format!("-{}-", triple))
-        })
+        .find(|triple| dist_path.to_string_lossy().contains(&format!("-{triple}-")))
         .ok_or_else(|| {
             anyhow!(
                 "could not identify triple from distribution filename: {}",
@@ -1767,7 +1875,7 @@ fn validate_distribution(
                 .unwrap()
                 .python_paths
                 .values()
-                .map(|x| format!("python/{}", x)),
+                .map(|x| format!("python/{x}")),
         );
     } else {
         context.errors.push(format!(
@@ -1915,8 +2023,7 @@ fn validate_distribution(
 
     for path in wanted_python_paths {
         context.errors.push(format!(
-            "path prefix {} seen in python_paths does not appear in archive",
-            path
+            "path prefix {path} seen in python_paths does not appear in archive"
         ));
     }
 
@@ -1930,7 +2037,7 @@ fn validate_distribution(
     for lib in wanted_dylibs.difference(&context.seen_dylibs) {
         context
             .errors
-            .push(format!("required library dependency {} not seen", lib));
+            .push(format!("required library dependency {lib} not seen"));
     }
 
     if triple.contains("-windows-") && is_static {
@@ -1967,8 +2074,7 @@ fn validate_distribution(
             if let Some(shared) = &ext.shared_lib {
                 if !seen_paths.contains(&PathBuf::from("python").join(shared)) {
                     context.errors.push(format!(
-                        "extension module {} references missing shared library path {}",
-                        name, shared
+                        "extension module {name} references missing shared library path {shared}"
                     ));
                 }
             }
@@ -1990,13 +2096,11 @@ fn validate_distribution(
 
             if want_shared && ext.shared_lib.is_none() {
                 context.errors.push(format!(
-                    "extension module {} does not have a shared library",
-                    name
+                    "extension module {name} does not have a shared library"
                 ));
             } else if !want_shared && ext.shared_lib.is_some() {
                 context.errors.push(format!(
-                    "extension module {} contains a shared library unexpectedly",
-                    name
+                    "extension module {name} contains a shared library unexpectedly"
                 ));
             }
 
@@ -2049,7 +2153,7 @@ fn validate_distribution(
     if triple.contains("-apple-darwin") {
         if let Some(sdks) = macos_sdks {
             if let Some(value) = json.as_ref().unwrap().apple_sdk_deployment_target.as_ref() {
-                let target_minimum_sdk = semver::Version::parse(&format!("{}.0", value))?;
+                let target_minimum_sdk = semver::Version::parse(&format!("{value}.0"))?;
 
                 sdks.validate_context(&mut context, target_minimum_sdk, triple)?;
             } else {
@@ -2137,7 +2241,7 @@ pub fn command_validate_distribution(args: &ArgMatches) -> Result<()> {
             println!("  {} OK", path.display());
         } else {
             for error in errors {
-                println!("  error: {}", error);
+                println!("  error: {error}");
             }
 
             success = false;

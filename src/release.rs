@@ -13,7 +13,7 @@ use std::{
 use url::Url;
 use {
     crate::json::parse_python_json,
-    anyhow::{anyhow, Result},
+    anyhow::{Result, anyhow},
     once_cell::sync::Lazy,
     pep440_rs::VersionSpecifier,
     std::{
@@ -129,6 +129,18 @@ pub static RELEASE_TRIPLES: Lazy<BTreeMap<&'static str, TripleRelease>> = Lazy::
             }],
         },
     );
+    h.insert(
+        "aarch64-pc-windows-msvc",
+        TripleRelease {
+            suffixes: vec!["pgo"],
+            install_only_suffix: "pgo",
+            python_version_requirement: Some(VersionSpecifier::from_str(">=3.11").unwrap()),
+            conditional_suffixes: vec![ConditionalSuffixes {
+                python_version_requirement: VersionSpecifier::from_str(">=3.13").unwrap(),
+                suffixes: vec!["freethreaded+pgo"],
+            }],
+        },
+    );
 
     // Linux.
     let linux_suffixes_pgo = vec!["debug", "pgo+lto"];
@@ -156,12 +168,12 @@ pub static RELEASE_TRIPLES: Lazy<BTreeMap<&'static str, TripleRelease>> = Lazy::
     h.insert(
         "aarch64-unknown-linux-gnu",
         TripleRelease {
-            suffixes: linux_suffixes_nopgo.clone(),
-            install_only_suffix: "lto",
+            suffixes: linux_suffixes_pgo.clone(),
+            install_only_suffix: "pgo+lto",
             python_version_requirement: None,
             conditional_suffixes: vec![ConditionalSuffixes {
                 python_version_requirement: VersionSpecifier::from_str(">=3.13").unwrap(),
-                suffixes: linux_suffixes_nopgo_freethreaded.clone(),
+                suffixes: linux_suffixes_pgo_freethreaded.clone(),
             }],
         },
     );
@@ -319,6 +331,18 @@ pub static RELEASE_TRIPLES: Lazy<BTreeMap<&'static str, TripleRelease>> = Lazy::
         "x86_64_v4-unknown-linux-musl",
         TripleRelease {
             suffixes: linux_suffixes_musl.clone(),
+            install_only_suffix: "lto",
+            python_version_requirement: None,
+            conditional_suffixes: vec![ConditionalSuffixes {
+                python_version_requirement: VersionSpecifier::from_str(">=3.13").unwrap(),
+                suffixes: linux_suffixes_musl_freethreaded.clone(),
+            }],
+        },
+    );
+    h.insert(
+        "aarch64-unknown-linux-musl",
+        TripleRelease {
+            suffixes: vec!["debug", "lto", "noopt"],
             install_only_suffix: "lto",
             python_version_requirement: None,
             conditional_suffixes: vec![ConditionalSuffixes {
@@ -604,7 +628,7 @@ static LLVM_URL: Lazy<Url> = Lazy::new(|| {
 /// Returns the path to the top-level `llvm` directory.
 pub async fn bootstrap_llvm() -> Result<PathBuf> {
     let url = &*LLVM_URL;
-    let filename = url.path_segments().unwrap().last().unwrap();
+    let filename = url.path_segments().unwrap().next_back().unwrap();
 
     let llvm_dir = Path::new("build").join("llvm");
     std::fs::create_dir_all(&llvm_dir)?;
@@ -622,7 +646,7 @@ pub async fn bootstrap_llvm() -> Result<PathBuf> {
     // Download the tarball.
     let tarball_path = temp_dir
         .path()
-        .join(url.path_segments().unwrap().last().unwrap());
+        .join(url.path_segments().unwrap().next_back().unwrap());
     let mut tarball_file = tokio::fs::File::create(&tarball_path).await?;
     let mut bytes_stream = reqwest::Client::new()
         .get(url.clone())

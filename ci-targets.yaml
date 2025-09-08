@@ -50,13 +50,11 @@ linux:
       - "3.14"
     build_options:
       - debug
-      - noopt
-      - lto
+      - pgo+lto
     build_options_conditional:
       - options:
           - freethreaded+debug
-          - freethreaded+noopt
-          - freethreaded+lto
+          - freethreaded+pgo+lto
         minimum-python-version: "3.13"
 
   armv7-unknown-linux-gnueabi:
@@ -350,6 +348,32 @@ linux:
         minimum-python-version: "3.13"
     run: true
 
+  aarch64-unknown-linux-musl:
+    arch: aarch64
+    libc: musl
+    python_versions:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+      - "3.14"
+    build_options:
+      # TODO: Static support is current blocked by some compiler-rt linking issues
+      # - debug+static
+      # - noopt+static
+      # - lto+static
+      - debug
+      - noopt
+      - lto
+    build_options_conditional:
+      - options:
+          - freethreaded+debug
+          - freethreaded+noopt
+          - freethreaded+lto
+        minimum-python-version: "3.13"
+    run: true
+
 windows:
   i686-pc-windows-msvc:
     arch: x86
@@ -374,6 +398,24 @@ windows:
     python_versions:
       - "3.9"
       - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+      - "3.14"
+    build_options:
+      - pgo
+    build_options_conditional:
+      - options:
+          - freethreaded+pgo
+        minimum-python-version: "3.13"
+
+  aarch64-pc-windows-msvc:
+    arch: aarch64
+    vcvars: vcvarsamd64_arm64.bat
+    python_versions:
+      # On 3.9 / 3.10, `_tkinter` is failing to be included in the build
+      # - "3.9"
+      # - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"

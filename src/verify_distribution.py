@@ -114,7 +114,7 @@ class TestPythonInterpreter(unittest.TestCase):
     def test_sqlite(self):
         import sqlite3
 
-        self.assertEqual(sqlite3.sqlite_version_info, (3, 47, 1))
+        self.assertEqual(sqlite3.sqlite_version_info, (3, 50, 4))
 
         # Optional SQLite3 features are enabled.
         conn = sqlite3.connect(":memory:")
@@ -122,6 +122,22 @@ class TestPythonInterpreter(unittest.TestCase):
         self.assertTrue(hasattr(conn, "enable_load_extension"))
         # Backup feature requires modern SQLite, which we always have.
         self.assertTrue(hasattr(conn, "backup"))
+        # Ensure that various extensions are present. These will raise if they are not. Note that
+        # CPython upstream carries configuration flags for the Windows build, so geopoly is missing
+        # on all versions and rtree is missing in 3.9. On non-Windows platforms, we configure
+        # SQLite ourselves. We might want to patch the build to enable these on Windows, see #666.
+        extensions = ["fts3", "fts4", "fts5"]
+        if os.name != "nt":
+            extensions.append("geopoly")
+        if os.name != "nt" or sys.version_info[0:2] > (3, 9):
+            extensions.append("rtree")
+        cursor = conn.cursor()
+        for extension in extensions:
+            with self.subTest(extension=extension):
+                cursor.execute(
+                    f"CREATE VIRTUAL TABLE test{extension} USING {extension}(a, b, c);"
+                )
+        conn.close()
 
     def test_ssl(self):
         import ssl
@@ -155,6 +171,18 @@ class TestPythonInterpreter(unittest.TestCase):
             wanted = 0
 
         self.assertEqual(sysconfig.get_config_var("Py_GIL_DISABLED"), wanted)
+
+    @unittest.skipIf(
+        sys.version_info[:2] < (3, 14),
+        "zstd is only available in 3.14+",
+    )
+    def test_zstd_multithreaded(self):
+        from compression import zstd
+
+        max_threads = zstd.CompressionParameter.nb_workers.bounds()[1]
+        assert max_threads > 0, (
+            "Expected multithreading to be enabled but max threads is zero"
+        )
 
     @unittest.skipIf("TCL_LIBRARY" not in os.environ, "TCL_LIBRARY not set")
     @unittest.skipIf("DISPLAY" not in os.environ, "DISPLAY not set")

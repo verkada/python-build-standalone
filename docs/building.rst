@@ -39,6 +39,7 @@ As are various other targets::
     $ ./build-linux.py --target aarch64-unknown-linux-gnu
     $ ./build-linux.py --target armv7-unknown-linux-gnueabi
     $ ./build-linux.py --target armv7-unknown-linux-gnueabihf
+    $ ./build-linux.py --target loongarch64-unknown-linux-gnu
     $ ./build-linux.py --target mips-unknown-linux-gnu
     $ ./build-linux.py --target mipsel-unknown-linux-gnu
     $ ./build-linux.py --target ppc64le-unknown-linux-gnu
@@ -87,7 +88,7 @@ Visual Studio 2017 (or later) is required. A compatible Windows SDK is required
 (10.0.17763.0 as per CPython 3.7.2).
 
 * A ``git.exe`` on ``PATH`` (to clone ``libffi`` from source).
-* An installation of Cywgin with the ``autoconf``, ``automake``, ``libtool``,
+* An installation of Cygwin with the ``autoconf``, ``automake``, ``libtool``,
   and ``make`` packages installed. (``libffi`` build dependency.)
 
 To build a dynamically linked Python distribution for Windows x64::

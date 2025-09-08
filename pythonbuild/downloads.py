@@ -73,19 +73,19 @@ DOWNLOADS = {
         "python_tag": "cp312",
     },
     "cpython-3.13": {
-        "url": "https://www.python.org/ftp/python/3.13.5/Python-3.13.5.tar.xz",
-        "size": 22856016,
-        "sha256": "93e583f243454e6e9e4588ca2c2662206ad961659863277afcdb96801647d640",
-        "version": "3.13.5",
+        "url": "https://www.python.org/ftp/python/3.13.7/Python-3.13.7.tar.xz",
+        "size": 22769492,
+        "sha256": "5462f9099dfd30e238def83c71d91897d8caa5ff6ebc7a50f14d4802cdaaa79a",
+        "version": "3.13.7",
         "licenses": ["Python-2.0", "CNRI-Python"],
         "license_file": "LICENSE.cpython.txt",
         "python_tag": "cp313",
     },
     "cpython-3.14": {
-        "url": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0b2.tar.xz",
-        "size": 23579860,
-        "sha256": "7ac9e84844bbc0a5a8f1f79a37a68b3b8caf2a58b4aa5999c49227cb36e70ea6",
-        "version": "3.14.0b2",
+        "url": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0rc2.tar.xz",
+        "size": 23566140,
+        "sha256": "bc62854cf232345bd22c9091a68464e01e056c6473a3fffa84572c8a342da656",
+        "version": "3.14.0rc2",
         "licenses": ["Python-2.0", "CNRI-Python"],
         "license_file": "LICENSE.cpython.txt",
         "python_tag": "cp314",
@@ -170,6 +170,13 @@ DOWNLOADS = {
         "size": 158614671,
         "sha256": "04cb77c660f09df017a57738ae9635ef23a506024789f2f18da1304b45af2023",
         "version": "14.0.3+20220508",
+    },
+    # Remember to update LLVM_URL in src/release.rs whenever upgrading.
+    "llvm-20-aarch64-linux": {
+        "url": "https://github.com/indygreg/toolchain-tools/releases/download/toolchain-bootstrap%2F20250511/llvm-20.1.4+20250511-gnu_only-aarch64-unknown-linux-gnu.tar.zst",
+        "size": 255946687,
+        "sha256": "e70753f294b8f83fffbaf07af36857c27ceaef0291cb10f724ada6af11b0a5bc",
+        "version": "20.1.4+20250511",
     },
     # Remember to update LLVM_URL in src/release.rs whenever upgrading.
     "llvm-20-x86_64-linux": {
@@ -288,11 +295,11 @@ DOWNLOADS = {
     },
     # Remember to update verify_distribution.py when version changed.
     "sqlite": {
-        "url": "https://www.sqlite.org/2024/sqlite-autoconf-3470100.tar.gz",
-        "size": 3328564,
-        "sha256": "416a6f45bf2cacd494b208fdee1beda509abda951d5f47bc4f2792126f01b452",
-        "version": "3470100",
-        "actual_version": "3.47.1.0",
+        "url": "https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz",
+        "size": 3173050,
+        "sha256": "a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18",
+        "version": "3500400",
+        "actual_version": "3.50.4.0",
         "library_names": ["sqlite3"],
         "licenses": [],
         "license_file": "LICENSE.sqlite.txt",
@@ -372,10 +379,10 @@ DOWNLOADS = {
         "license_file": "LICENSE.libuuid.txt",
     },
     "x11-util-macros": {
-        "url": "https://www.x.org/archive/individual/util/util-macros-1.20.1.tar.gz",
-        "size": 105481,
-        "sha256": "b373f72887b1394ce2193180a60cb0d1fb8b17bc96ddd770cfd7a808cb489a15",
-        "version": "1.20.1",
+        "url": "https://www.x.org/archive/individual/util/util-macros-1.20.2.tar.gz",
+        "size": 105410,
+        "sha256": "f642f8964d81acdf06653fdf9dbc210c43ce4bd308bd644a8d573148d0ced76b",
+        "version": "1.20.2",
     },
     "xcb-proto": {
         "url": "https://xcb.freedesktop.org/dist/xcb-proto-1.17.0.tar.xz",
@@ -383,19 +390,17 @@ DOWNLOADS = {
         "sha256": "2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c",
         "version": "1.17.0",
     },
-    # Newer versions from at least 2023 have build failures for reasons we haven't
-    # fully investigated.
     "xorgproto": {
-        "url": "https://www.x.org/archive/individual/proto/xorgproto-2019.1.tar.gz",
-        "size": 1119813,
-        "sha256": "38ad1d8316515785d53c5162b4b7022918e03c11d72a5bd9df0a176607f42bca",
-        "version": "2019.1",
+        "url": "https://www.x.org/archive/individual/proto/xorgproto-2024.1.tar.gz",
+        "size": 1115486,
+        "sha256": "4f6b9b4faf91e5df8265b71843a91fc73dc895be6210c84117a996545df296ce",
+        "version": "2024.1",
     },
     "xtrans": {
-        "url": "https://www.x.org/archive/individual/lib/xtrans-1.5.0.tar.gz",
-        "size": 230197,
-        "sha256": "a806f8a92f879dcd0146f3f1153fdffe845f2fc0df9b1a26c19312b7b0a29c86",
-        "version": "1.5.0",
+        "url": "https://www.x.org/archive/individual/lib/xtrans-1.6.0.tar.gz",
+        "size": 239113,
+        "sha256": "936b74c60b19c317c3f3cb1b114575032528dbdaf428740483200ea874c2ca0a",
+        "version": "1.6.0",
     },
     # IMPORTANT: xz 5.6 has a backdoor. Be extremely cautious before taking any xz
     # upgrade since it isn't clear which versions are safe.

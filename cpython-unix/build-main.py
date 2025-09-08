@@ -95,6 +95,8 @@ def main():
             "toolchain-image-build",
             "toolchain-image-build.cross",
             "toolchain-image-build.cross-riscv64",
+            "toolchain-image-build.cross-loongarch64",
+            "toolchain-image-build.debian9",
             "toolchain-image-gcc",
             "toolchain-image-xcb",
             "toolchain-image-xcb.cross",
@@ -181,7 +183,7 @@ def main():
     # because we can get some speedup from parallel operations. But we also don't
     # share a make job server with each build. So if we didn't limit the
     # parallelism we could easily oversaturate the CPU. Higher levels of
-    # parallelism don't result in meaningful build speedups because tk/tix has
+    # parallelism don't result in meaningful build speedups because tk has
     # a long, serial dependency chain that can't be built in parallel.
     parallelism = min(1 if args.serial else 4, multiprocessing.cpu_count())
 
