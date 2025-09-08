@@ -35,7 +35,16 @@ linux:
       - "3.13"
       - "3.14"
     build_options:
+      - debug
+      - noopt
       - lto
+    build_options_conditional:
+      - options:
+          - freethreaded+debug
+          - freethreaded+noopt
+          - freethreaded+lto
+        minimum-python-version: "3.13"
+
 
   x86_64-unknown-linux-gnu:
     arch: x86_64
