@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import shutil
 
 import docker
 import zstandard
@@ -285,8 +286,18 @@ def simple_build(
 
 def build_binutils(client, image, host_platform):
     """Build binutils in the Docker image."""
-    archive = download_entry("binutils", DOWNLOADS_PATH)
-
+    # Check if local files exists at root:
+    binutils_repo_path = f"{ROOT}/binutils-2.43.tar.xz"
+    if os.path.exists(binutils_repo_path):
+        print(f"Local file exists at {binutils_repo_path}. Copying")
+        local_path = f"{DOWNLOADS_PATH}/binutils-2.43.tar.xz"
+        shutil.copy(binutils_repo_path, local_path)
+        print(f"Copied {binutils_repo_path} to {local_path}")
+        archive = pathlib.Path(local_path)
+    else:
+        print(f"Local file does not exist at {local_path}")
+        archive = download_entry("binutils", DOWNLOADS_PATH)
+        
     with build_environment(client, image) as build_env:
         build_env.copy_file(archive)
         build_env.copy_file(SUPPORT / "build-binutils.sh")
