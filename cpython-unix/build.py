@@ -281,6 +281,7 @@ def simple_build(
 
         build_env.run("build-%s.sh" % entry, environment=env)
 
+        print(f"here at simple_build")
         build_env.get_tools_archive(dest_archive, tools_path)
 
 
@@ -311,6 +312,7 @@ def build_binutils(client, image, host_platform):
             environment=env,
         )
 
+        print(f"here at build_binutils")
         build_env.get_tools_archive(
             toolchain_archive_path("binutils", host_platform), "host"
         )
@@ -359,6 +361,7 @@ def build_musl(client, image, host_platform: str, target_triple: str, build_opti
 
         build_env.run("build-musl.sh", environment=env)
 
+        print(f"here at build_musl")
         build_env.get_tools_archive(toolchain_archive_path(musl, host_platform), "host")
 
 
@@ -392,6 +395,7 @@ def build_libedit(
         add_target_env(env, host_platform, target_triple, build_env)
 
         build_env.run("build-libedit.sh", environment=env)
+        print(f"here at libedit")
         build_env.get_tools_archive(dest_archive, "deps")
 
 
@@ -457,6 +461,7 @@ def build_cpython_host(
             environment=env,
         )
 
+        print(f"here at cpython-host")
         build_env.get_tools_archive(dest_archive, "host")
 
 
