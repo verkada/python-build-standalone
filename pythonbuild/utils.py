@@ -96,16 +96,14 @@ def supported_targets(yaml_path: pathlib.Path):
     return targets
 
 
-def target_needs(yaml_path: pathlib.Path, target: str, python_version: str):
+def target_needs(yaml_path: pathlib.Path, target: str):
     """Obtain the dependencies needed to build the specified target."""
     settings = get_targets(yaml_path)[target]
 
     needs = set(settings["needs"])
 
-    # We only ship libedit linked readline extension on 3.10+ to avoid a GPL
-    # dependency.
-    if not python_version.startswith("3.9"):
-        needs.discard("readline")
+    # Ship libedit linked readline extension to avoid a GPL dependency.
+    needs.discard("readline")
 
     return needs
 
@@ -571,7 +569,7 @@ def add_env_common(env):
 
     env_path = os.path.expanduser("~/.python-build-standalone-env")
     try:
-        with open(env_path, "r") as fh:
+        with open(env_path) as fh:
             for line in fh:
                 line = line.strip()
                 if line.startswith("#"):

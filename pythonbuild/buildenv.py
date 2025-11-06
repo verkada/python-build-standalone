@@ -23,7 +23,7 @@ from .utils import (
 )
 
 
-class ContainerContext(object):
+class ContainerContext:
     def __init__(self, container):
         self.container = container
 
@@ -139,7 +139,7 @@ class ContainerContext(object):
             yield line[len("/build/out/%s/" % base_path) :].decode("ascii")
 
 
-class TempdirContext(object):
+class TempdirContext:
     def __init__(self, td):
         self.td = pathlib.Path(td)
 

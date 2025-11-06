@@ -47,15 +47,6 @@ DOWNLOADS = {
         "licenses": ["bzip2-1.0.6"],
         "license_file": "LICENSE.bzip2.txt",
     },
-    "cpython-3.9": {
-        "url": "https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tar.xz",
-        "size": 20183236,
-        "sha256": "00e07d7c0f2f0cc002432d1ee84d2a40dae404a99303e3f97701c10966c91834",
-        "version": "3.9.25",
-        "licenses": ["Python-2.0", "CNRI-Python"],
-        "license_file": "LICENSE.cpython.txt",
-        "python_tag": "cp39",
-    },
     "cpython-3.10": {
         "url": "https://www.python.org/ftp/python/3.10.19/Python-3.10.19.tar.xz",
         "size": 19873020,

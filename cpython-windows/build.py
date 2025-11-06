@@ -1850,7 +1850,6 @@ def main() -> None:
     parser.add_argument(
         "--python",
         choices={
-            "cpython-3.9",
             "cpython-3.10",
             "cpython-3.11",
             "cpython-3.12",
@@ -1902,7 +1901,7 @@ def main() -> None:
         # CPython 3.11+ have native support for OpenSSL 3.x. We anticipate this
         # will change in a future minor release once OpenSSL 1.1 goes out of support.
         # But who knows.
-        if args.python in ("cpython-3.9", "cpython-3.10"):
+        if args.python == "cpython-3.10":
             openssl_entry = "openssl-1.1"
         else:
             openssl_entry = "openssl-3.5"

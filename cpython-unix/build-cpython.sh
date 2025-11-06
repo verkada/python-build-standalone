@@ -72,7 +72,7 @@ fi
 # configure doesn't support cross-compiling on LoongArch. Teach it.
 if [ "${PYBUILD_PLATFORM}" != "macos" ]; then
     case "${PYTHON_MAJMIN_VERSION}" in
-        3.9|3.10|3.11)
+        3.10|3.11)
             patch -p1 -i ${ROOT}/patch-configure-add-loongarch-triplet.patch
             ;;
     esac
@@ -83,13 +83,6 @@ if [ -n "${CROSS_COMPILING}" ]; then
     if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_11}" ]; then
         patch -p1 -i ${ROOT}/patch-cross-readelf.patch
     fi
-fi
-
-# This patch is slightly different on Python 3.10+.
-if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_10}" ]; then
-    patch -p1 -i ${ROOT}/patch-xopen-source-ios.patch
-else
-    patch -p1 -i ${ROOT}/patch-xopen-source-ios-legacy.patch
 fi
 
 # LIBTOOL_CRUFT is unused and breaks cross-compiling on macOS. Nuke it.
@@ -175,9 +168,7 @@ fi
 # executable. This behavior is kinda suspect on all platforms, as it could be adding
 # library dependencies that shouldn't need to be there.
 if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
-    if [ "${PYTHON_MAJMIN_VERSION}" = "3.9" ]; then
-        patch -p1 -i ${ROOT}/patch-python-link-modules-3.9.patch
-    elif [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
+    if [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
         patch -p1 -i ${ROOT}/patch-python-link-modules-3.10.patch
     else
         patch -p1 -i ${ROOT}/patch-python-link-modules-3.11.patch
@@ -205,8 +196,6 @@ elif [ "${PYTHON_MAJMIN_VERSION}" = "3.11" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.11.patch
 elif [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.10.patch
-else
-    patch -p1 -i ${ROOT}/patch-tkinter-3.9.patch
 fi
 
 # Code that runs at ctypes module import time does not work with
@@ -214,34 +203,12 @@ fi
 # See https://bugs.python.org/issue37060.
 patch -p1 -i ${ROOT}/patch-ctypes-static-binary.patch
 
-# Older versions of Python need patching to work with modern mpdecimal.
-if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" ]; then
-    patch -p1 -i ${ROOT}/patch-decimal-modern-mpdecimal.patch
-fi
-
 # We build against libedit instead of readline in all environments.
 #
 # On macOS, we use the system/SDK libedit, which is likely somewhat old.
 #
 # On Linux, we use our own libedit, which should be modern.
 #
-# CPython 3.10 added proper support for building against libedit outside of
-# macOS. On older versions, we need to hack up readline.c to build against
-# libedit. This patch breaks older libedit (as seen on macOS) so don't apply
-# on macOS.
-if [[ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" && "${PYBUILD_PLATFORM}" != macos* ]]; then
-    # readline.c assumes that a modern readline API version has a free_history_entry().
-    # but libedit does not. Change the #ifdef accordingly.
-    #
-    # Similarly, we invoke configure using readline, which sets
-    # HAVE_RL_COMPLETION_SUPPRESS_APPEND improperly. So hack that. This is a bug
-    # in our build system, as we should probably be invoking configure again when
-    # using libedit.
-    #
-    # Similar workaround for on_completion_display_matches_hook.
-    patch -p1 -i ${ROOT}/patch-readline-libedit.patch
-fi
-
 if [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
     # Even though 3.10 is libedit aware, it isn't compatible with newer
     # versions of libedit. We need to backport a 3.11 patch to teach the
@@ -367,11 +334,8 @@ fi
 # Always build against libedit instead of the default of readline.
 # macOS always uses the system libedit, so no tweaks are needed.
 if [[ "${PYBUILD_PLATFORM}" != macos* ]]; then
-    # CPython 3.10 introduced proper configure support for libedit, so add configure
-    # flag there.
-    if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_10}" ]; then
-        EXTRA_CONFIGURE_FLAGS="${EXTRA_CONFIGURE_FLAGS} --with-readline=editline"
-    fi
+    # Add configure flag for proper configure support for libedit.
+    EXTRA_CONFIGURE_FLAGS="${EXTRA_CONFIGURE_FLAGS} --with-readline=editline"
 fi
 
 # On Python 3.14+, enable the tail calling interpreter which is more performant.
@@ -546,25 +510,6 @@ if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
     # as Homebrew or MacPorts. So nerf the check to prevent this.
     CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_lib_intl_textdomain=no"
 
-    # CPython 3.9+ have proper support for weakly referenced symbols and
-    # runtime availability guards. CPython 3.8 will emit weak symbol references
-    # (this happens automatically when linking due to SDK version targeting).
-    # However CPython lacks the runtime availability guards for most symbols.
-    # This results in runtime failures when attempting to resolve/call the
-    # symbol.
-    if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" ]; then
-        if [ "${TARGET_TRIPLE}" != "aarch64-apple-darwin" ]; then
-            for symbol in clock_getres clock_gettime clock_settime faccessat fchmodat fchownat fdopendir fstatat futimens getentropy linkat mkdirat openat preadv pwritev readlinkat renameat symlinkat unlinkat utimensat uttype; do
-                CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_${symbol}=no"
-            done
-        fi
-
-        # mkfifoat, mknodat introduced in SDK 13.0.
-        for symbol in mkfifoat mknodat; do
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_${symbol}=no"
-        done
-    fi
-
     if [ -n "${CROSS_COMPILING}" ]; then
         # Python's configure doesn't support cross-compiling on macOS. So we need
         # to explicitly set MACHDEP to avoid busted checks. The code for setting
@@ -574,26 +519,10 @@ if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=Darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release=$(uname -r)"
-        elif [ "${TARGET_TRIPLE}" = "aarch64-apple-ios" ]; then
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release="
-            # clock_settime() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_clock_settime=no"
-            # getentropy() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_getentropy=no"
         elif [ "${TARGET_TRIPLE}" = "x86_64-apple-darwin" ]; then
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=Darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release=$(uname -r)"
-        elif [ "${TARGET_TRIPLE}" = "x86_64-apple-ios" ]; then
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release="
-            # clock_settime() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_clock_settime=no"
-            # getentropy() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_getentropy=no"
         else
             echo "unsupported target triple: ${TARGET_TRIPLE}"
             exit 1

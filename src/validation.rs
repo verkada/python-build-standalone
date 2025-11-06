@@ -32,13 +32,11 @@ use {
 
 const RECOGNIZED_TRIPLES: &[&str] = &[
     "aarch64-apple-darwin",
-    "aarch64-apple-ios",
     "aarch64-pc-windows-msvc",
     "aarch64-unknown-linux-gnu",
     "aarch64-unknown-linux-musl",
     "armv7-unknown-linux-gnueabi",
     "armv7-unknown-linux-gnueabihf",
-    "arm64-apple-tvos",
     "i686-pc-windows-msvc",
     "i686-unknown-linux-gnu",
     // Note there's build support for mips* targets but they are not tested
@@ -49,11 +47,7 @@ const RECOGNIZED_TRIPLES: &[&str] = &[
     "ppc64le-unknown-linux-gnu",
     "riscv64-unknown-linux-gnu",
     "s390x-unknown-linux-gnu",
-    "thumbv7k-apple-watchos",
     "x86_64-apple-darwin",
-    "x86_64-apple-ios",
-    "x86_64-apple-tvos",
-    "x86_64-apple-watchos",
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "x86_64_v2-unknown-linux-gnu",
@@ -303,16 +297,6 @@ static ELF_ALLOWED_LIBRARIES_BY_MODULE: Lazy<HashMap<&'static str, Vec<&'static 
 static DARWIN_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
     [
             MachOAllowedDylib {
-                name: "@executable_path/../lib/libpython3.9.dylib".to_string(),
-                max_compatibility_version: "3.9.0".try_into().unwrap(),
-                required: false,
-            },
-            MachOAllowedDylib {
-                name: "@executable_path/../lib/libpython3.9d.dylib".to_string(),
-                max_compatibility_version: "3.9.0".try_into().unwrap(),
-                required: false,
-            },
-            MachOAllowedDylib {
                 name: "@executable_path/../lib/libpython3.10.dylib".to_string(),
                 max_compatibility_version: "3.10.0".try_into().unwrap(),
                 required: false,
@@ -503,59 +487,6 @@ static DARWIN_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
         .to_vec()
 });
 
-static IOS_ALLOWED_DYLIBS: Lazy<Vec<MachOAllowedDylib>> = Lazy::new(|| {
-    [
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.9.dylib".to_string(),
-            max_compatibility_version: "3.9.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.9d.dylib".to_string(),
-            max_compatibility_version: "3.9.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.10.dylib".to_string(),
-            max_compatibility_version: "3.10.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.10d.dylib".to_string(),
-            max_compatibility_version: "3.10.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.11.dylib".to_string(),
-            max_compatibility_version: "3.11.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "@executable_path/../lib/libpython3.11d.dylib".to_string(),
-            max_compatibility_version: "3.11.0".try_into().unwrap(),
-            required: false,
-        },
-        // For some reason, CoreFoundation is present in debug/noopt builds but not
-        // LTO builds.
-        MachOAllowedDylib {
-            name: "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation".to_string(),
-            max_compatibility_version: "150.0.0".try_into().unwrap(),
-            required: false,
-        },
-        MachOAllowedDylib {
-            name: "/usr/lib/libSystem.B.dylib".to_string(),
-            max_compatibility_version: "1.0.0".try_into().unwrap(),
-            required: true,
-        },
-        MachOAllowedDylib {
-            name: "/usr/lib/libz.1.dylib".to_string(),
-            max_compatibility_version: "1.0.0".try_into().unwrap(),
-            required: true,
-        },
-    ]
-    .to_vec()
-});
-
 static ALLOWED_DYLIBS_BY_MODULE: Lazy<HashMap<&'static str, Vec<MachOAllowedDylib>>> =
     Lazy::new(|| {
         [(
@@ -582,7 +513,6 @@ static ALLOWED_DYLIBS_BY_MODULE: Lazy<HashMap<&'static str, Vec<MachOAllowedDyli
 static PLATFORM_TAG_BY_TRIPLE: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     [
         ("aarch64-apple-darwin", "macosx-11.0-arm64"),
-        ("aarch64-apple-ios", "iOS-aarch64"),
         ("aarch64-pc-windows-msvc", "win-arm64"),
         ("aarch64-unknown-linux-gnu", "linux-aarch64"),
         ("aarch64-unknown-linux-musl", "linux-aarch64"),
@@ -597,7 +527,6 @@ static PLATFORM_TAG_BY_TRIPLE: Lazy<HashMap<&'static str, &'static str>> = Lazy:
         ("riscv64-unknown-linux-gnu", "linux-riscv64"),
         ("s390x-unknown-linux-gnu", "linux-s390x"),
         ("x86_64-apple-darwin", "macosx-10.15-x86_64"),
-        ("x86_64-apple-ios", "iOS-x86_64"),
         ("x86_64-pc-windows-msvc", "win-amd64"),
         ("x86_64-unknown-linux-gnu", "linux-x86_64"),
         ("x86_64_v2-unknown-linux-gnu", "linux-x86_64"),
@@ -746,6 +675,7 @@ const GLOBAL_EXTENSIONS: &[&str] = &[
     "_json",
     "_locale",
     "_lsprof",
+    "_zoneinfo",
     "_lzma",
     "_md5",
     "_multibytecodec",
@@ -794,8 +724,6 @@ const GLOBAL_EXTENSIONS: &[&str] = &[
     "zlib",
 ];
 
-// _zoneinfo added in 3.9.
-// parser removed in 3.10.
 // _tokenize added in 3.11.
 // _typing added in 3.11.
 // _testsinglephase added in 3.12.
@@ -803,25 +731,11 @@ const GLOBAL_EXTENSIONS: &[&str] = &[
 // _xxinterpchannels added in 3.12.
 // audioop removed in 3.13.
 
-// We didn't build ctypes_test until 3.9.
-// We didn't build some test extensions until 3.9.
-
-const GLOBAL_EXTENSIONS_PYTHON_3_9: &[&str] = &[
-    "audioop",
-    "_peg_parser",
-    "_sha256",
-    "_sha512",
-    "_xxsubinterpreters",
-    "_zoneinfo",
-    "parser",
-];
-
 const GLOBAL_EXTENSIONS_PYTHON_3_10: &[&str] = &[
     "audioop",
     "_sha256",
     "_sha512",
     "_xxsubinterpreters",
-    "_zoneinfo",
 ];
 
 const GLOBAL_EXTENSIONS_PYTHON_3_11: &[&str] = &[
@@ -831,7 +745,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_11: &[&str] = &[
     "_tokenize",
     "_typing",
     "_xxsubinterpreters",
-    "_zoneinfo",
 ];
 
 const GLOBAL_EXTENSIONS_PYTHON_3_12: &[&str] = &[
@@ -841,7 +754,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_12: &[&str] = &[
     "_typing",
     "_xxinterpchannels",
     "_xxsubinterpreters",
-    "_zoneinfo",
 ];
 
 const GLOBAL_EXTENSIONS_PYTHON_3_13: &[&str] = &[
@@ -853,7 +765,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_13: &[&str] = &[
     "_sysconfig",
     "_tokenize",
     "_typing",
-    "_zoneinfo",
 ];
 
 const GLOBAL_EXTENSIONS_PYTHON_3_14: &[&str] = &[
@@ -866,7 +777,6 @@ const GLOBAL_EXTENSIONS_PYTHON_3_14: &[&str] = &[
     "_sysconfig",
     "_tokenize",
     "_typing",
-    "_zoneinfo",
     "_hmac",
     "_types",
     "_zstd",
@@ -921,8 +831,6 @@ fn allowed_dylibs_for_triple(triple: &str) -> Vec<MachOAllowedDylib> {
     match triple {
         "aarch64-apple-darwin" => DARWIN_ALLOWED_DYLIBS.clone(),
         "x86_64-apple-darwin" => DARWIN_ALLOWED_DYLIBS.clone(),
-        "aarch64-apple-ios" => IOS_ALLOWED_DYLIBS.clone(),
-        "x86_64-apple-ios" => IOS_ALLOWED_DYLIBS.clone(),
         _ => vec![],
     }
 }
@@ -1263,9 +1171,7 @@ fn validate_macho<Mach: MachHeader<Endian = Endianness>>(
 
     let wanted_cpu_type = match target_triple {
         "aarch64-apple-darwin" => object::macho::CPU_TYPE_ARM64,
-        "aarch64-apple-ios" => object::macho::CPU_TYPE_ARM64,
         "x86_64-apple-darwin" => object::macho::CPU_TYPE_X86_64,
-        "x86_64-apple-ios" => object::macho::CPU_TYPE_X86_64,
         _ => return Err(anyhow!("unhandled target triple: {}", target_triple)),
     };
 
@@ -1660,23 +1566,14 @@ fn validate_extension_modules(
 ) -> Result<Vec<String>> {
     let mut errors = vec![];
 
-    let is_ios = target_triple.contains("-apple-ios");
     let is_macos = target_triple.contains("-apple-darwin");
     let is_linux = target_triple.contains("-unknown-linux-");
     let is_windows = target_triple.contains("-pc-windows-");
     let is_linux_musl = target_triple.contains("-unknown-linux-musl");
 
-    // iOS isn't well supported. So don't do any validation.
-    if is_ios {
-        return Ok(errors);
-    }
-
     let mut wanted = BTreeSet::from_iter(GLOBAL_EXTENSIONS.iter().copied());
 
     match python_major_minor {
-        "3.9" => {
-            wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_9);
-        }
         "3.10" => {
             wanted.extend(GLOBAL_EXTENSIONS_PYTHON_3_10);
         }
@@ -1700,7 +1597,7 @@ fn validate_extension_modules(
     if is_macos {
         wanted.extend(GLOBAL_EXTENSIONS_POSIX);
 
-        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+        if matches!(python_major_minor, "3.10" | "3.11" | "3.12") {
             wanted.extend(GLOBAL_EXTENSIONS_POSIX_PRE_3_13);
         }
 
@@ -1710,7 +1607,7 @@ fn validate_extension_modules(
     if is_windows {
         wanted.extend(GLOBAL_EXTENSIONS_WINDOWS);
 
-        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+        if matches!(python_major_minor, "3.10" | "3.11" | "3.12") {
             wanted.extend(GLOBAL_EXTENSIONS_WINDOWS_PRE_3_13);
         }
 
@@ -1728,15 +1625,15 @@ fn validate_extension_modules(
     if is_linux {
         wanted.extend(GLOBAL_EXTENSIONS_POSIX);
 
-        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+        if matches!(python_major_minor, "3.10" | "3.11" | "3.12") {
             wanted.extend(GLOBAL_EXTENSIONS_POSIX_PRE_3_13);
         }
 
-        if matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+        if matches!(python_major_minor, "3.10" | "3.11" | "3.12") {
             wanted.extend(GLOBAL_EXTENSIONS_LINUX_PRE_3_13);
         }
 
-        if !is_linux_musl && matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12") {
+        if !is_linux_musl && matches!(python_major_minor, "3.10" | "3.11" | "3.12") {
             wanted.insert("ossaudiodev");
         }
     }
@@ -1868,9 +1765,7 @@ fn validate_distribution(
             )
         })?;
 
-    let python_major_minor = if dist_filename.starts_with("cpython-3.9.") {
-        "3.9"
-    } else if dist_filename.starts_with("cpython-3.10.") {
+    let python_major_minor = if dist_filename.starts_with("cpython-3.10.") {
         "3.10"
     } else if dist_filename.starts_with("cpython-3.11.") {
         "3.11"
@@ -2161,7 +2056,7 @@ fn validate_distribution(
             } else if name == "_warnings" {
                 // But not on Python 3.13 on Windows
                 if triple.contains("-windows-") {
-                    matches!(python_major_minor, "3.9" | "3.10" | "3.11" | "3.12")
+                    matches!(python_major_minor, "3.10" | "3.11" | "3.12")
                 } else {
                     true
                 }

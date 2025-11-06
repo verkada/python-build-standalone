@@ -7,7 +7,7 @@ Building
 Linux
 =====
 
-The host system must be 64-bit. A Python 3.9+ interpreter must be
+The host system must be 64-bit. A Python 3.10+ interpreter must be
 available. The execution environment must have access to a Docker
 daemon (all build operations are performed in Docker containers for
 isolation from the host system).
