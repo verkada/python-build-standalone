@@ -629,6 +629,24 @@ if [ -n "${CROSS_COMPILING}" ]; then
     # TODO: There are probably more of these, see #599.
 fi
 
+# Adjust the Python startup logic (getpath.py) to properly locate the installation, even when
+# invoked through a symlink or through an incorrect argv[0]. Because this Python is relocatable, we
+# don't get to rely on the fallback to the compiled-in installation prefix.
+if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]]; then
+    patch -p1 -i "${ROOT}/patch-python-getpath-3.14.patch"
+fi
+
+# Another, similar change to getpath: When reading inside a venv use the base_executable path to
+# determine executable_dir when valid. This allows venv to be created from symlinks and covers some
+# cases the above patch doesn't. See:
+# https://github.com/python/cpython/issues/106045#issuecomment-2594628161
+# 3.10 does not use getpath.py only getpath.c, no patch is applied
+if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]; then
+    patch -p1 -i "${ROOT}/patch-getpath-use-base_executable-for-executable_dir-314.patch"
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_11}" ]; then
+    patch -p1 -i "${ROOT}/patch-getpath-use-base_executable-for-executable_dir.patch"
+fi
+
 # We patched configure.ac above. Reflect those changes.
 autoconf
 
