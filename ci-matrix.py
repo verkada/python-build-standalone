@@ -9,7 +9,7 @@
 import argparse
 import json
 import sys
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from packaging.version import Version
@@ -39,7 +39,7 @@ def meets_conditional_version(version: str, min_version: str) -> bool:
     return Version(version) >= Version(min_version)
 
 
-def parse_labels(labels: Optional[str]) -> dict[str, set[str]]:
+def parse_labels(labels: str | None) -> dict[str, set[str]]:
     """Parse labels into a dict of category filters."""
     if not labels:
         return {}
@@ -106,7 +106,7 @@ def should_include_entry(entry: dict[str, str], filters: dict[str, set[str]]) ->
 
 def generate_docker_matrix_entries(
     runners: dict[str, Any],
-    platform_filter: Optional[str] = None,
+    platform_filter: str | None = None,
 ) -> list[dict[str, str]]:
     """Generate matrix entries for docker image builds."""
     if platform_filter and platform_filter != "linux":
@@ -132,7 +132,7 @@ def generate_crate_build_matrix_entries(
     runners: dict[str, Any],
     config: dict[str, Any],
     force_crate_build: bool = False,
-    platform_filter: Optional[str] = None,
+    platform_filter: str | None = None,
 ) -> list[dict[str, str]]:
     """Generate matrix entries for crate builds based on python build matrix."""
     needed_builds = set()
@@ -181,8 +181,8 @@ def generate_crate_build_matrix_entries(
 def generate_python_build_matrix_entries(
     config: dict[str, Any],
     runners: dict[str, Any],
-    platform_filter: Optional[str] = None,
-    label_filters: Optional[dict[str, set[str]]] = None,
+    platform_filter: str | None = None,
+    label_filters: dict[str, set[str]] | None = None,
 ) -> list[dict[str, str]]:
     """Generate matrix entries for python builds."""
     matrix_entries = []
@@ -348,10 +348,10 @@ def main() -> None:
     args = parse_args()
     labels = parse_labels(args.labels)
 
-    with open(CI_TARGETS_YAML, "r") as f:
+    with open(CI_TARGETS_YAML) as f:
         config = yaml.safe_load(f)
 
-    with open(CI_RUNNERS_YAML, "r") as f:
+    with open(CI_RUNNERS_YAML) as f:
         runners = yaml.safe_load(f)
 
     # If only free runners are allowed, reduce to a subset

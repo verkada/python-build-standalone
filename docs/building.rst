@@ -7,7 +7,7 @@ Building
 Linux
 =====
 
-The host system must be 64-bit. A Python 3.9+ interpreter must be
+The host system must be 64-bit. A Python 3.10+ interpreter must be
 available. The execution environment must have access to a Docker
 daemon (all build operations are performed in Docker containers for
 isolation from the host system).
@@ -45,6 +45,11 @@ As are various other targets::
     $ ./build-linux.py --target ppc64le-unknown-linux-gnu
     $ ./build-linux.py --target riscv64-unknown-linux-gnu
     $ ./build-linux.py --target s390x-unknown-linux-gnu
+
+Additionally, an arm64 macOS host can be used to build Linux aarch64 targets
+using Docker::
+
+    $ ./build-linux.py --target aarch64-unknown-linux-gnu
 
 macOS
 =====

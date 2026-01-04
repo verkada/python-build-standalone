@@ -59,11 +59,11 @@ cat Makefile.extra
 pushd Python-${PYTHON_VERSION}
 
 # configure doesn't support cross-compiling on Apple. Teach it.
-if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
-    if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]; then
-        patch -p1 -i ${ROOT}/patch-apple-cross-3.13.patch
-    elif [ "${PYTHON_MAJMIN_VERSION}" = "3.12" ]; then
+if [[ "${PYBUILD_PLATFORM}" = macos* && -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_13}" ]]; then
+    if [ "${PYTHON_MAJMIN_VERSION}" = "3.12" ]; then
         patch -p1 -i ${ROOT}/patch-apple-cross-3.12.patch
+    elif [ "${PYTHON_MAJMIN_VERSION}" = "3.13" ]; then
+        patch -p1 -i ${ROOT}/patch-apple-cross-3.13.patch
     else
         patch -p1 -i ${ROOT}/patch-apple-cross.patch
     fi
@@ -72,7 +72,7 @@ fi
 # configure doesn't support cross-compiling on LoongArch. Teach it.
 if [ "${PYBUILD_PLATFORM}" != "macos" ]; then
     case "${PYTHON_MAJMIN_VERSION}" in
-        3.9|3.10|3.11)
+        3.10|3.11)
             patch -p1 -i ${ROOT}/patch-configure-add-loongarch-triplet.patch
             ;;
     esac
@@ -83,13 +83,6 @@ if [ -n "${CROSS_COMPILING}" ]; then
     if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_11}" ]; then
         patch -p1 -i ${ROOT}/patch-cross-readelf.patch
     fi
-fi
-
-# This patch is slightly different on Python 3.10+.
-if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_10}" ]; then
-    patch -p1 -i ${ROOT}/patch-xopen-source-ios.patch
-else
-    patch -p1 -i ${ROOT}/patch-xopen-source-ios-legacy.patch
 fi
 
 # LIBTOOL_CRUFT is unused and breaks cross-compiling on macOS. Nuke it.
@@ -103,7 +96,8 @@ fi
 # TODO this may not be needed after removing support for i686 builds. But it
 # may still be useful since CPython's definition of cross-compiling has historically
 # been very liberal and kicks in when it arguably shouldn't.
-if [ -n "${CROSS_COMPILING}" ]; then
+# Merged upstream in Python 3.15, https://github.com/python/cpython/pull/141958
+if [[ -n "${CROSS_COMPILING}" && -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_14}" ]]; then
     if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]; then
         patch -p1 -i ${ROOT}/patch-dont-clear-runshared-14.patch
     elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]; then
@@ -115,15 +109,12 @@ if [ -n "${CROSS_COMPILING}" ]; then
     fi
 fi
 
-# Clang 13 actually prints something with --print-multiarch, confusing CPython's
-# configure. This is reported as https://bugs.python.org/issue45405. We nerf the
-# check since we know what we're doing.
-if [[ "${CC}" = "clang" || "${CC}" = "musl-clang" ]]; then
-    if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]; then
-        patch -p1 -i ${ROOT}/patch-disable-multiarch-13.patch
-    else
-        patch -p1 -i ${ROOT}/patch-disable-multiarch.patch
-    fi
+# CPython <=3.10 doesn't properly detect musl. CPython <=3.12 tries, but fails
+# in our environment because of an autoconf bug. CPython >=3.13 is fine.
+if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_10}" ]; then
+    patch -p1 -i ${ROOT}/patch-cpython-configure-target-triple-musl-3.10.patch
+elif [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_12}" ]; then
+    patch -p1 -i ${ROOT}/patch-cpython-configure-target-triple-musl-3.12.patch
 fi
 
 # Python 3.11 supports using a provided Python to use during bootstrapping
@@ -167,9 +158,7 @@ fi
 # executable. This behavior is kinda suspect on all platforms, as it could be adding
 # library dependencies that shouldn't need to be there.
 if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
-    if [ "${PYTHON_MAJMIN_VERSION}" = "3.9" ]; then
-        patch -p1 -i ${ROOT}/patch-python-link-modules-3.9.patch
-    elif [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
+    if [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
         patch -p1 -i ${ROOT}/patch-python-link-modules-3.10.patch
     else
         patch -p1 -i ${ROOT}/patch-python-link-modules-3.11.patch
@@ -189,16 +178,16 @@ fi
 # On Windows, CPython looks for the Tcl/Tk libraries relative to the base prefix,
 # which we want. But on Unix, it doesn't. This patch applies similar behavior on Unix,
 # thereby ensuring that the Tcl/Tk libraries are found in the correct location.
-if [ "${PYTHON_MAJMIN_VERSION}" = "3.13" ]; then
+if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]; then
+    patch -p1 -i ${ROOT}/patch-tkinter-3.14.patch
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.13.patch
-elif [ "${PYTHON_MAJMIN_VERSION}" = "3.12" ]; then
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.12.patch
-elif [ "${PYTHON_MAJMIN_VERSION}" = "3.11" ]; then
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_11}" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.11.patch
-elif [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_10}" ]; then
     patch -p1 -i ${ROOT}/patch-tkinter-3.10.patch
-else
-    patch -p1 -i ${ROOT}/patch-tkinter-3.9.patch
 fi
 
 # Code that runs at ctypes module import time does not work with
@@ -206,34 +195,12 @@ fi
 # See https://bugs.python.org/issue37060.
 patch -p1 -i ${ROOT}/patch-ctypes-static-binary.patch
 
-# Older versions of Python need patching to work with modern mpdecimal.
-if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" ]; then
-    patch -p1 -i ${ROOT}/patch-decimal-modern-mpdecimal.patch
-fi
-
 # We build against libedit instead of readline in all environments.
 #
 # On macOS, we use the system/SDK libedit, which is likely somewhat old.
 #
 # On Linux, we use our own libedit, which should be modern.
 #
-# CPython 3.10 added proper support for building against libedit outside of
-# macOS. On older versions, we need to hack up readline.c to build against
-# libedit. This patch breaks older libedit (as seen on macOS) so don't apply
-# on macOS.
-if [[ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" && "${PYBUILD_PLATFORM}" != macos* ]]; then
-    # readline.c assumes that a modern readline API version has a free_history_entry().
-    # but libedit does not. Change the #ifdef accordingly.
-    #
-    # Similarly, we invoke configure using readline, which sets
-    # HAVE_RL_COMPLETION_SUPPRESS_APPEND improperly. So hack that. This is a bug
-    # in our build system, as we should probably be invoking configure again when
-    # using libedit.
-    #
-    # Similar workaround for on_completion_display_matches_hook.
-    patch -p1 -i ${ROOT}/patch-readline-libedit.patch
-fi
-
 if [ "${PYTHON_MAJMIN_VERSION}" = "3.10" ]; then
     # Even though 3.10 is libedit aware, it isn't compatible with newer
     # versions of libedit. We need to backport a 3.11 patch to teach the
@@ -263,6 +230,10 @@ fi
 # everything.
 if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_11}" ]; then
     if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
+        # This sets MODULE_<NAME>_STATE=disabled in the Makefile for all extension
+        # modules that are not unavailable (n/a) based on the platform.
+        # Valid STATE variables are needed to create the _missing_stdlib_info.py
+        # file during the build in Python 3.15+
         patch -p1 -i ${ROOT}/patch-configure-disable-stdlib-mod-3.12.patch
     else
         patch -p1 -i ${ROOT}/patch-configure-disable-stdlib-mod.patch
@@ -285,7 +256,11 @@ if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
     patch -p1 -i ${ROOT}/patch-configure-bolt-icf-safe.patch
 
     # Tweak --skip-funcs to work with our toolchain.
-    patch -p1 -i ${ROOT}/patch-configure-bolt-skip-funcs.patch
+    if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_15}" ]; then
+        patch -p1 -i ${ROOT}/patch-configure-bolt-skip-funcs-3.15.patch
+    else
+        patch -p1 -i ${ROOT}/patch-configure-bolt-skip-funcs.patch
+    fi
 fi
 
 # The optimization make targets are both phony and non-phony. This leads
@@ -300,7 +275,9 @@ fi
 # the configure-based module building and replacing it with our
 # own Setup-derived version completely breaks assumptions in this
 # script. So leave it off for now... at our own peril.
-if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
+if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_15}" ]; then
+    patch -p1 -i ${ROOT}/patch-checksharedmods-disable-3.15.patch
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
     patch -p1 -i ${ROOT}/patch-checksharedmods-disable.patch
 fi
 
@@ -314,9 +291,22 @@ fi
 # BOLT instrumented binaries segfault in some test_embed tests for unknown reasons.
 # On 3.12 (minimum BOLT version), the segfault causes the test harness to
 # abort and BOLT optimization uses the partial test results. On 3.13, the segfault
-# is a fatal error.
-if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_12}" ]; then
+# is a fatal error. Fixed in 3.14+, https://github.com/python/cpython/pull/128474
+if [ "${PYTHON_MAJMIN_VERSION}" = 3.12 ] || [ "${PYTHON_MAJMIN_VERSION}" = 3.13 ]; then
     patch -p1 -i ${ROOT}/patch-test-embed-prevent-segfault.patch
+fi
+
+# Cherry-pick an upstream change in Python 3.15 to build _asyncio as
+# static (which we do anyway in our own fashion) and more importantly to
+# take this into account when finding the AsyncioDebug section.
+if [ "${PYTHON_MAJMIN_VERSION}" = 3.14 ]; then
+    patch -p1 -i ${ROOT}/patch-python-3.14-asyncio-static.patch
+fi
+
+# Ensure the new build-details.json file reports relocatable paths.
+# There is not yet a flag in ./configure for this, sadly.
+if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]; then
+    patch -p1 -i ${ROOT}/patch-python-relative-build-details.patch
 fi
 
 # Most bits look at CFLAGS. But setup.py only looks at CPPFLAGS.
@@ -346,11 +336,8 @@ fi
 # Always build against libedit instead of the default of readline.
 # macOS always uses the system libedit, so no tweaks are needed.
 if [[ "${PYBUILD_PLATFORM}" != macos* ]]; then
-    # CPython 3.10 introduced proper configure support for libedit, so add configure
-    # flag there.
-    if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_10}" ]; then
-        EXTRA_CONFIGURE_FLAGS="${EXTRA_CONFIGURE_FLAGS} --with-readline=editline"
-    fi
+    # Add configure flag for proper configure support for libedit.
+    EXTRA_CONFIGURE_FLAGS="${EXTRA_CONFIGURE_FLAGS} --with-readline=editline"
 fi
 
 # On Python 3.14+, enable the tail calling interpreter which is more performant.
@@ -499,8 +486,12 @@ if [ -n "${CPYTHON_OPTIMIZED}" ]; then
             patch -p1 -i "${ROOT}/patch-jit-llvm-version-3.13.patch"
         fi
 
-         if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]]; then
+        if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" && -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_14}" ]]; then
             patch -p1 -i "${ROOT}/patch-jit-llvm-version-3.14.patch"
+        fi
+
+        if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_15}" ]]; then
+            patch -p1 -i "${ROOT}/patch-jit-llvm-version-3.15.patch"
         fi
     fi
 fi
@@ -521,25 +512,6 @@ if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
     # as Homebrew or MacPorts. So nerf the check to prevent this.
     CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_lib_intl_textdomain=no"
 
-    # CPython 3.9+ have proper support for weakly referenced symbols and
-    # runtime availability guards. CPython 3.8 will emit weak symbol references
-    # (this happens automatically when linking due to SDK version targeting).
-    # However CPython lacks the runtime availability guards for most symbols.
-    # This results in runtime failures when attempting to resolve/call the
-    # symbol.
-    if [ -n "${PYTHON_MEETS_MAXIMUM_VERSION_3_9}" ]; then
-        if [ "${TARGET_TRIPLE}" != "aarch64-apple-darwin" ]; then
-            for symbol in clock_getres clock_gettime clock_settime faccessat fchmodat fchownat fdopendir fstatat futimens getentropy linkat mkdirat openat preadv pwritev readlinkat renameat symlinkat unlinkat utimensat uttype; do
-                CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_${symbol}=no"
-            done
-        fi
-
-        # mkfifoat, mknodat introduced in SDK 13.0.
-        for symbol in mkfifoat mknodat; do
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_${symbol}=no"
-        done
-    fi
-
     if [ -n "${CROSS_COMPILING}" ]; then
         # Python's configure doesn't support cross-compiling on macOS. So we need
         # to explicitly set MACHDEP to avoid busted checks. The code for setting
@@ -549,26 +521,10 @@ if [[ "${PYBUILD_PLATFORM}" = macos* ]]; then
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=Darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release=$(uname -r)"
-        elif [ "${TARGET_TRIPLE}" = "aarch64-apple-ios" ]; then
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release="
-            # clock_settime() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_clock_settime=no"
-            # getentropy() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_getentropy=no"
         elif [ "${TARGET_TRIPLE}" = "x86_64-apple-darwin" ]; then
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=Darwin"
             CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release=$(uname -r)"
-        elif [ "${TARGET_TRIPLE}" = "x86_64-apple-ios" ]; then
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} MACHDEP=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_system=iOS"
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_sys_release="
-            # clock_settime() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_clock_settime=no"
-            # getentropy() not available on iOS.
-            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_getentropy=no"
         else
             echo "unsupported target triple: ${TARGET_TRIPLE}"
             exit 1
@@ -596,10 +552,19 @@ if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}"  ]; then
     CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_func_explicit_bzero=no"
 fi
 
+# Define the base PGO profiling task, which we'll extend below with ignores
+export PROFILE_TASK='-m test --pgo'
+
 # On 3.14+ `test_strftime_y2k` fails when cross-compiling for `x86_64_v2` and `x86_64_v3` targets on
 # Linux, so we ignore it. See https://github.com/python/cpython/issues/128104
 if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" && -n "${CROSS_COMPILING}" && "${PYBUILD_PLATFORM}" != macos* ]]; then
-    export PROFILE_TASK='-m test --pgo --ignore test_strftime_y2k'
+    PROFILE_TASK="${PROFILE_TASK} --ignore test_strftime_y2k"
+fi
+
+# On 3.14+ `test_json.test_recursion.TestCRecursion.test_highly_nested_objects_decoding` fails during
+# PGO due to RecursionError not being raised as expected. See https://github.com/python/cpython/issues/140125
+if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]]; then
+    PROFILE_TASK="${PROFILE_TASK} --ignore test_json"
 fi
 
 # ./configure tries to auto-detect whether it can build 128-bit and 256-bit SIMD helpers for HACL,
@@ -647,7 +612,41 @@ if [ -n "${CROSS_COMPILING}" ]; then
     # default on relatively modern compilers.
     CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_pthread=yes"
 
-    # TODO: There are probably more of these, see #399.
+    # Also, it cannot detect whether misaligned memory accesses should
+    # be avoided, and conservatively defaults to yes, which makes it
+    # pick the 'fnv' hash instead of 'siphash', which numba does not
+    # like (#683, see also comment in cpython/configure.ac). These
+    # answers are taken from the Linux kernel source's Kconfig files,
+    # search for HAVE_EFFICIENT_UNALIGNED_ACCESS.
+    case "${TARGET_TRIPLE}" in
+        arm64*|aarch64*|armv7*|thumb7*|ppc64*|s390*|x86*)
+            CONFIGURE_FLAGS="${CONFIGURE_FLAGS} ac_cv_aligned_required=no"
+            ;;
+    esac
+
+    # TODO: There are probably more of these, see #599.
+fi
+
+# Adjust the Python startup logic (getpath.py) to properly locate the installation, even when
+# invoked through a symlink or through an incorrect argv[0]. Because this Python is relocatable, we
+# don't get to rely on the fallback to the compiled-in installation prefix.
+if [[ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_11}" ]]; then
+    if [ -e "${ROOT}/patch-python-getpath-backport-${PYTHON_MAJMIN_VERSION}.patch" ]; then
+        # Sync the getpath logic in older minor releases to the current version.
+        patch -p1 -i "${ROOT}/patch-python-getpath-backport-${PYTHON_MAJMIN_VERSION}.patch"
+    fi
+    patch -p1 -i "${ROOT}/patch-python-getpath-library.patch"
+fi
+
+# Another, similar change to getpath: When reading inside a venv use the base_executable path to
+# determine executable_dir when valid. This allows venv to be created from symlinks and covers some
+# cases the above patch doesn't. See:
+# https://github.com/python/cpython/issues/106045#issuecomment-2594628161
+# 3.10 does not use getpath.py only getpath.c, no patch is applied
+if [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_14}" ]; then
+    patch -p1 -i "${ROOT}/patch-getpath-use-base_executable-for-executable_dir-314.patch"
+elif [ -n "${PYTHON_MEETS_MINIMUM_VERSION_3_11}" ]; then
+    patch -p1 -i "${ROOT}/patch-getpath-use-base_executable-for-executable_dir.patch"
 fi
 
 # We patched configure.ac above. Reflect those changes.
@@ -707,16 +706,19 @@ if [ "${PYBUILD_SHARED}" = "1" ]; then
         LIBPYTHON_SHARED_LIBRARY_BASENAME=libpython${PYTHON_MAJMIN_VERSION}${PYTHON_BINARY_SUFFIX}.dylib
         LIBPYTHON_SHARED_LIBRARY=${ROOT}/out/python/install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME}
 
+        # Fix the Python binary to reference libpython via @rpath and add
+        # an rpath entry so it can find the library.
         install_name_tool \
-            -change /install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} @executable_path/../lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
+            -change /install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} @rpath/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
+            -add_rpath @executable_path/../lib \
             ${ROOT}/out/python/install/bin/python${PYTHON_MAJMIN_VERSION}
 
         # Python's build system doesn't make this file writable.
-        # TODO(geofft): @executable_path/ is a weird choice here, who is
-        # relying on it? Should probably be @loader_path.
         chmod 755 ${ROOT}/out/python/install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME}
+        # Set libpython's install name to @rpath so binaries linking against it
+        # can locate it via their own rpath entries.
         install_name_tool \
-            -change /install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} @executable_path/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
+            -id @rpath/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
             ${ROOT}/out/python/install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME}
 
         # We also normalize /tools/deps/lib/libz.1.dylib to the system location.
@@ -729,7 +731,8 @@ if [ "${PYBUILD_SHARED}" = "1" ]; then
 
         if [ -n "${PYTHON_BINARY_SUFFIX}" ]; then
             install_name_tool \
-                -change /install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} @executable_path/../lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
+                -change /install/lib/${LIBPYTHON_SHARED_LIBRARY_BASENAME} @rpath/${LIBPYTHON_SHARED_LIBRARY_BASENAME} \
+                -add_rpath @executable_path/../lib \
                 ${ROOT}/out/python/install/bin/python${PYTHON_MAJMIN_VERSION}${PYTHON_BINARY_SUFFIX}
         fi
 
@@ -1095,11 +1098,10 @@ mkdir -p "${LIB_DYNLOAD}"
 touch "${LIB_DYNLOAD}/.empty"
 
 # Symlink libpython so we don't have 2 copies.
+# TODO(geofft): Surely we can get PYTHON_ARCH out of the build?
 case "${TARGET_TRIPLE}" in
 aarch64-unknown-linux-*)
-    # In Python 3.13+, the musl target is identified in cross compiles and the output directory
-    # is named accordingly.
-    if [[ "${CC}" = "musl-clang" && -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]]; then
+    if [[ "${CC}" = "musl-clang" ]]; then
         PYTHON_ARCH="aarch64-linux-musl"
     else
         PYTHON_ARCH="aarch64-linux-gnu"
@@ -1138,9 +1140,7 @@ s390x-unknown-linux-gnu)
     PYTHON_ARCH="s390x-linux-gnu"
     ;;
 x86_64-unknown-linux-*)
-    # In Python 3.13+, the musl target is identified in cross compiles and the output directory
-    # is named accordingly.
-    if [[ "${CC}" = "musl-clang" && -n "${PYTHON_MEETS_MINIMUM_VERSION_3_13}" ]]; then
+    if [[ "${CC}" = "musl-clang" ]]; then
         PYTHON_ARCH="x86_64-linux-musl"
     else
         PYTHON_ARCH="x86_64-linux-gnu"
@@ -1235,7 +1235,7 @@ ${BUILD_PYTHON} ${ROOT}/fix_shebangs.py ${ROOT}/out/python/install
 # downstream consumers.
 OBJECT_DIRS="Objects Parser Parser/lexer Parser/pegen Parser/tokenizer Programs Python Python/deepfreeze"
 OBJECT_DIRS="${OBJECT_DIRS} Modules"
-for ext in _blake2 cjkcodecs _ctypes _ctypes/darwin _decimal _expat _hacl _io _multiprocessing _sha3 _sqlite _sre _testinternalcapi _xxtestfuzz _zstd; do
+for ext in _blake2 cjkcodecs _ctypes _ctypes/darwin _decimal _expat _hacl _io _multiprocessing _remote_debugging _sha3 _sqlite _sre _testinternalcapi _xxtestfuzz _zstd; do
     OBJECT_DIRS="${OBJECT_DIRS} Modules/${ext}"
 done
 
