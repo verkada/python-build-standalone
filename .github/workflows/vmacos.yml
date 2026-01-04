@@ -1,0 +1,126 @@
+name: vmacos
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_COLOR: 1
+
+permissions: {}
+
+jobs:
+  crate-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Emit rustc version
+        run: |
+          rustc --version > .rustc-version
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-pythonbuild-${{ hashFiles('Cargo.lock', '.rustc-version') }}
+
+      - name: Build
+        run: |
+          cargo build --release
+
+      - name: Upload pythonbuild Executable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: crate-darwin-aarch64
+          path: target/release/pythonbuild
+
+  build:
+    needs:
+      - crate-build
+    permissions:
+      id-token: write
+      attestations: write
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target_triple:
+          - aarch64-apple-darwin
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+        build_options:
+          - pgo+lto
+        include:
+          # Freethreaded builds for Python 3.13+
+          - target_triple: aarch64-apple-darwin
+            python: "3.13"
+            build_options: freethreaded+pgo+lto
+          - target_triple: aarch64-apple-darwin
+            python: "3.14"
+            build_options: freethreaded+pgo+lto
+    name: ${{ matrix.target_triple }} / ${{ matrix.python }} / ${{ matrix.build_options }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          enable-cache: false
+
+      - name: Download pythonbuild
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: crate-darwin-aarch64
+          path: build
+
+      - name: Build
+        run: |
+          ./build.py --target-triple ${MATRIX_TARGET_TRIPLE} --python cpython-${MATRIX_PYTHON} --options ${MATRIX_BUILD_OPTIONS}
+        env:
+          MATRIX_TARGET_TRIPLE: ${{ matrix.target_triple }}
+          MATRIX_PYTHON: ${{ matrix.python }}
+          MATRIX_BUILD_OPTIONS: ${{ matrix.build_options }}
+
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        if: ${{ github.ref == 'refs/heads/main' }}
+        with:
+          subject-path: dist/*
+
+      - name: Upload Distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cpython-${{ matrix.python }}-${{ matrix.target_triple }}-${{ matrix.build_options }}
+          path: dist/*
+
+      - name: Checkout macOS SDKs for validation
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: phracker/MacOSX-SDKs
+          ref: master
+          path: macosx-sdks
+          persist-credentials: false
+
+      - name: Validate Distribution
+        run: |
+          chmod +x build/pythonbuild
+
+          # macos-latest is aarch64, so we can run validation
+          build/pythonbuild validate-distribution --macos-sdks-path macosx-sdks --run dist/*.tar.zst

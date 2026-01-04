@@ -1,0 +1,97 @@
+name: vRelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The version to release (e.g., '20250612')."
+        type: string
+      sha:
+        description: "The full SHA of the commit to be released (e.g., 'd09ff921d92d6da8d8a608eaa850dc8c0f638194')."
+        type: string
+      dry-run:
+        description: "Dry run? Tests the release process without publishing."
+        default: false
+        required: false
+        type: boolean
+
+env:
+  FORCE_COLOR: 1
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: recursive
+          persist-credentials: true
+
+      - uses: extractions/setup-crate@4993624604c307fbca528d28a3c8b60fa5ecc859 # v1.4.0
+        with:
+          repo: casey/just
+          version: 1.42.4
+
+      # Perform a release in dry-run mode.
+      - run: just release-dry-run ${GH_TOKEN} ${GITHUB_EVENT_INPUTS_SHA} ${GITHUB_EVENT_INPUTS_TAG}
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        env:
+          GITHUB_EVENT_INPUTS_SHA: ${{ github.event.inputs.sha }}
+          GITHUB_EVENT_INPUTS_TAG: ${{ github.event.inputs.tag }}
+
+      - name: Configure Git identity
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: |
+          git config --global user.name "$GITHUB_ACTOR"
+          git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Fetch commit
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: git fetch origin ${GITHUB_EVENT_INPUTS_SHA}
+        env:
+          GITHUB_EVENT_INPUTS_SHA: ${{ github.event.inputs.sha }}
+
+      - name: Create tag
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: git tag ${GITHUB_EVENT_INPUTS_TAG} ${GITHUB_EVENT_INPUTS_SHA}
+        env:
+          GITHUB_EVENT_INPUTS_TAG: ${{ github.event.inputs.tag }}
+          GITHUB_EVENT_INPUTS_SHA: ${{ github.event.inputs.sha }}
+
+      - name: Push tag
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: git push origin ${GITHUB_EVENT_INPUTS_TAG}
+        env:
+          GITHUB_EVENT_INPUTS_TAG: ${{ github.event.inputs.tag }}
+
+      - name: Create GitHub Release
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: just release-create ${GITHUB_EVENT_INPUTS_TAG}
+        env:
+          GITHUB_EVENT_INPUTS_TAG: ${{ github.event.inputs.tag }}
+
+      - run: just release-run ${GH_TOKEN} ${GITHUB_EVENT_INPUTS_SHA} ${GITHUB_EVENT_INPUTS_TAG}
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        env:
+          GITHUB_EVENT_INPUTS_SHA: ${{ github.event.inputs.sha }}
+          GITHUB_EVENT_INPUTS_TAG: ${{ github.event.inputs.tag }}
+
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.tar.zst

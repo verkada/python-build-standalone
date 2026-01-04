@@ -1,9 +1,11 @@
 name: windows
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Disabled - not building Windows targets
+  # push:
+  #   branches: [main]
+  # pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}

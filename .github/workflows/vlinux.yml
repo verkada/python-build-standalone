@@ -1,0 +1,251 @@
+name: vlinux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_COLOR: 1
+
+permissions: {}
+
+jobs:
+  crate-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install System Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends libssl-dev pkg-config
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Emit rustc version
+        run: |
+          rustc --version > .rustc-version
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-pythonbuild-${{ hashFiles('Cargo.lock', '.rustc-version') }}
+
+      - name: Build
+        run: |
+          cargo build --release
+
+      - name: Upload pythonbuild Executable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: crate-linux-x86_64
+          path: target/release/pythonbuild
+
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: build
+            arch: x86_64
+          - name: build.cross
+            arch: x86_64
+          - name: gcc
+            arch: x86_64
+    name: image / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          enable-cache: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Dockerfiles
+        run: |
+          ./build.py --make-target empty
+          repo_name=$(echo "${GITHUB_REPOSITORY,,}" | sed 's|\.|_|g')
+          git_ref_name=$(echo "${GITHUB_REF_NAME,,}" | sed 's|[^a-z0-9_-]|_|g')
+          echo "REPO_NAME=${repo_name}" >> "${GITHUB_ENV}"
+          echo "GIT_REF_NAME=${git_ref_name}" >> "${GITHUB_ENV}"
+
+      - name: Build Image
+        id: build-image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        env:
+          SOURCE_DATE_EPOCH: 0
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          file: build/${{ matrix.name }}.Dockerfile
+          labels: org.opencontainers.image.source=https://github.com/${{ env.REPO_NAME }}
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ env.REPO_NAME }}:${{ matrix.name }}-linux_${{ matrix.arch }}-${{ env.GIT_REF_NAME }}
+            type=registry,ref=ghcr.io/${{ env.REPO_NAME }}:${{ matrix.name }}-linux_${{ matrix.arch }}-main
+            type=registry,ref=ghcr.io/astral-sh/python-build-standalone:${{ matrix.name }}-linux_${{ matrix.arch }}-main
+          cache-to: |
+            type=registry,ref=ghcr.io/${{ env.REPO_NAME }}:${{ matrix.name }}-linux_${{ matrix.arch }}-${{ env.GIT_REF_NAME }},ignore-error=true
+          outputs: |
+            type=docker,dest=build/image-${{ matrix.name }}.linux_${{ matrix.arch }}.tar
+
+      - name: Compress Image
+        run: |
+          echo ${STEPS_BUILD_IMAGE_OUTPUTS_IMAGEID} > build/image-${MATRIX_NAME}.linux_${MATRIX_ARCH}
+          zstd -v -T0 -6 --rm build/image-*.tar
+          touch -t 197001010000 build/image-*
+        env:
+          STEPS_BUILD_IMAGE_OUTPUTS_IMAGEID: ${{ steps.build-image.outputs.imageid }}
+          MATRIX_NAME: ${{ matrix.name }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+
+      - name: Upload Docker Image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-${{ matrix.name }}-linux_${{ matrix.arch }}
+          path: build/image-*
+          compression-level: '0'
+
+  build:
+    needs:
+      - crate-build
+      - image
+    permissions:
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target_triple:
+          - aarch64-unknown-linux-gnu
+          - x86_64-unknown-linux-gnu
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+        build_options:
+          - pgo+lto
+        include:
+          # Freethreaded builds for Python 3.13+
+          - target_triple: aarch64-unknown-linux-gnu
+            python: "3.13"
+            build_options: freethreaded+pgo+lto
+          - target_triple: aarch64-unknown-linux-gnu
+            python: "3.14"
+            build_options: freethreaded+pgo+lto
+          - target_triple: x86_64-unknown-linux-gnu
+            python: "3.13"
+            build_options: freethreaded+pgo+lto
+          - target_triple: x86_64-unknown-linux-gnu
+            python: "3.14"
+            build_options: freethreaded+pgo+lto
+    name: ${{ matrix.target_triple }} / ${{ matrix.python }} / ${{ matrix.build_options }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          enable-cache: false
+
+      - name: Download pythonbuild
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: crate-linux-x86_64
+          path: build
+
+      - name: Download images
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          pattern: image-*
+          path: build
+          merge-multiple: true
+
+      - name: Cache downloads
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: build/downloads
+          key: ${{ matrix.target_triple }}-${{ hashFiles('pythonbuild/downloads.py')}}
+          restore-keys: |
+            ${{ matrix.target_triple }}-${{ hashFiles('pythonbuild/downloads.py')}}
+            ${{ matrix.target_triple }}-
+
+      - name: Load Docker Images
+        run: |
+          for f in build/image-*.tar.zst; do
+            echo "decompressing $f"
+            zstd -d --rm ${f}
+          done
+
+          for f in build/image-*.tar; do
+            echo "loading $f"
+            docker load --input $f
+          done
+
+      - name: Build
+        run: |
+          # Do empty target so all generated files are touched.
+          ./build.py --make-target empty
+
+          # Touch mtimes of all images so they are newer than autogenerated files above.
+          touch build/image-*
+
+          ./build.py --target-triple ${MATRIX_TARGET_TRIPLE} --python cpython-${MATRIX_PYTHON} --options ${MATRIX_BUILD_OPTIONS}
+        env:
+          MATRIX_TARGET_TRIPLE: ${{ matrix.target_triple }}
+          MATRIX_PYTHON: ${{ matrix.python }}
+          MATRIX_BUILD_OPTIONS: ${{ matrix.build_options }}
+
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        if: ${{ github.ref == 'refs/heads/main' }}
+        with:
+          subject-path: dist/*
+
+      - name: Upload Distribution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cpython-${{ matrix.python }}-${{ matrix.target_triple }}-${{ matrix.build_options }}
+          path: dist/*
+
+      - name: Validate Distribution
+        run: |
+          chmod +x build/pythonbuild
+
+          # Only run validation with --run for x86_64 (native architecture)
+          if [ "${MATRIX_TARGET_TRIPLE}" == "x86_64-unknown-linux-gnu" ]; then
+            EXTRA_ARGS="--run"
+          fi
+
+          build/pythonbuild validate-distribution ${EXTRA_ARGS} dist/*.tar.zst
+        env:
+          MATRIX_TARGET_TRIPLE: ${{ matrix.target_triple }}
