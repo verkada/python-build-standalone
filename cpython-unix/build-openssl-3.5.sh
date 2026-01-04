@@ -9,9 +9,9 @@ ROOT=`pwd`
 
 export PATH=${TOOLS_PATH}/${TOOLCHAIN}/bin:${TOOLS_PATH}/host/bin:$PATH
 
-tar -xf openssl-${OPENSSL_3_0_VERSION}.tar.gz
+tar -xf openssl-${OPENSSL_3_5_VERSION}.tar.gz
 
-pushd openssl-${OPENSSL_3_0_VERSION}
+pushd openssl-${OPENSSL_3_5_VERSION}
 
 # Otherwise it gets set to /tools/deps/ssl by default.
 case "${TARGET_TRIPLE}" in
