@@ -20,10 +20,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: namespace-profile-ubuntu-22-04-amd64-x86-64-large-caching
             arch: x86_64
             artifact_name: crate-linux-x86_64
-          - runner: namespace-profile-linux-arm
+          - runner: namespace-profile-ubuntu-22-04-amd64-arm-large-caching
             arch: aarch64
             artifact_name: crate-linux-aarch64
     runs-on: ${{ matrix.runner }}
@@ -67,19 +67,19 @@ jobs:
         include:
           - name: build
             arch: x86_64
-            runner: ubuntu-latest
+            runner: namespace-profile-ubuntu-22-04-amd64-x86-64-large-caching
           - name: build.cross
             arch: x86_64
-            runner: ubuntu-latest
+            runner: namespace-profile-ubuntu-22-04-amd64-x86-64-large-caching
           - name: gcc
             arch: x86_64
-            runner: ubuntu-latest
+            runner: namespace-profile-ubuntu-22-04-amd64-x86-64-large-caching
           - name: build.debian9
             arch: aarch64
-            runner: namespace-profile-linux-arm
+            runner: namespace-profile-ubuntu-22-04-amd64-arm-large-caching
           - name: gcc.debian9
             arch: aarch64
-            runner: namespace-profile-linux-arm
+            runner: namespace-profile-ubuntu-22-04-amd64-arm-large-caching
     name: image / ${{ matrix.arch }} / ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -156,7 +156,7 @@ jobs:
     permissions:
       id-token: write
       attestations: write
-    runs-on: ${{ matrix.target_triple == 'aarch64-unknown-linux-gnu' && 'namespace-profile-linux-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.target_triple == 'aarch64-unknown-linux-gnu' && 'namespace-profile-ubuntu-22-04-amd64-arm-large-caching' || 'namespace-profile-ubuntu-22-04-amd64-x86-64-large-caching' }}
     strategy:
       fail-fast: false
       matrix:
