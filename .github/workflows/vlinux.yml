@@ -221,15 +221,32 @@ jobs:
 
       - name: Load Docker Images
         run: |
+          echo "Files in build directory:"
+          ls -lah build/
+
+          echo "Looking for image archives..."
+          ls -lah build/image-* || echo "No image files found"
+
           for f in build/image-*.tar.zst; do
-            echo "decompressing $f"
-            zstd -d --rm ${f}
+            if [ -f "$f" ]; then
+              echo "decompressing $f"
+              zstd -d --rm ${f}
+            else
+              echo "Warning: $f not found or is not a file"
+            fi
           done
 
           for f in build/image-*.tar; do
-            echo "loading $f"
-            docker load --input $f
+            if [ -f "$f" ]; then
+              echo "loading $f"
+              docker load --input $f
+            else
+              echo "Warning: $f not found or is not a file"
+            fi
           done
+
+          echo "Loaded Docker images:"
+          docker images
 
       - name: Build
         run: |
