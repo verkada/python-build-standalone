@@ -16,7 +16,18 @@ permissions: {}
 
 jobs:
   crate-build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+            artifact_name: crate-linux-x86_64
+          - runner: namespace-profile-linux-arm
+            arch: aarch64
+            artifact_name: crate-linux-aarch64
+    runs-on: ${{ matrix.runner }}
+    name: crate / ${{ matrix.arch }}
     steps:
       - name: Install System Dependencies
         run: |
@@ -37,7 +48,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-pythonbuild-${{ hashFiles('Cargo.lock', '.rustc-version') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-pythonbuild-${{ hashFiles('Cargo.lock', '.rustc-version') }}
 
       - name: Build
         run: |
@@ -46,7 +57,7 @@ jobs:
       - name: Upload pythonbuild Executable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: crate-linux-x86_64
+          name: ${{ matrix.artifact_name }}
           path: target/release/pythonbuild
 
   image:
@@ -56,12 +67,21 @@ jobs:
         include:
           - name: build
             arch: x86_64
+            runner: ubuntu-latest
           - name: build.cross
             arch: x86_64
+            runner: ubuntu-latest
           - name: gcc
             arch: x86_64
-    name: image / ${{ matrix.name }}
-    runs-on: ubuntu-latest
+            runner: ubuntu-latest
+          - name: build.debian9
+            arch: aarch64
+            runner: namespace-profile-linux-arm
+          - name: gcc.debian9
+            arch: aarch64
+            runner: namespace-profile-linux-arm
+    name: image / ${{ matrix.arch }} / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       packages: write
     steps:
@@ -136,7 +156,7 @@ jobs:
     permissions:
       id-token: write
       attestations: write
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.target_triple == 'aarch64-unknown-linux-gnu' && 'namespace-profile-linux-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -180,7 +200,7 @@ jobs:
       - name: Download pythonbuild
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: crate-linux-x86_64
+          name: ${{ matrix.target_triple == 'aarch64-unknown-linux-gnu' && 'crate-linux-aarch64' || 'crate-linux-x86_64' }}
           path: build
 
       - name: Download images
