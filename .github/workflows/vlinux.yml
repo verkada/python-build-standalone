@@ -231,17 +231,22 @@ jobs:
             if [ -f "$f" ]; then
               echo "decompressing $f"
               zstd -d --rm ${f}
-            else
-              echo "Warning: $f not found or is not a file"
             fi
           done
 
           for f in build/image-*.tar; do
             if [ -f "$f" ]; then
               echo "loading $f"
-              docker load --input $f
-            else
-              echo "Warning: $f not found or is not a file"
+              # Capture the loaded image ID from docker load output
+              LOADED_ID=$(docker load --input $f 2>&1 | grep "Loaded image ID:" | awk '{print $4}')
+              echo "Loaded image ID: $LOADED_ID"
+
+              # Update the ID file with the actual loaded ID
+              ID_FILE="${f%.tar}"
+              if [ -n "$LOADED_ID" ]; then
+                echo "$LOADED_ID" > "$ID_FILE"
+                echo "Updated $ID_FILE with $LOADED_ID"
+              fi
             fi
           done
 
